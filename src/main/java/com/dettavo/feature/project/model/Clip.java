@@ -17,7 +17,9 @@ public record Clip(
         Instant addedAt,
         ClipSource source,
         ClipArtifacts artifacts,
-        Transcript transcript) {
+        Transcript transcript,
+        /* Why the uploaded file was refused ("This file has no audio track"), for its tile (guide 9); else null. */
+        String failure) {
 
     /** Clip ids are c01, c02 and upward within a project and are never reused. */
     public static String idFor(int number) {

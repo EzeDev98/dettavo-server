@@ -42,14 +42,32 @@ public class FfmpegRunner {
         return Boolean.TRUE.equals(toolLocator.inventory().encoders().get(encoder));
     }
 
+    /** -/filter_complex on FFmpeg 7.0 or newer, otherwise -filter_complex_script (guide 4.6). */
+    public String filterGraphFlag() {
+        return toolLocator.inventory().filterGraphFlag();
+    }
+
     /**
      * Runs ffmpeg with the given arguments (everything between "-y" and the output) and renames the result
      * to target. Returns false if the run was cancelled, leaving nothing behind.
      */
     public boolean runToFile(List<String> arguments, Path target, long durationMs, Path logFile,
                              CancellationToken cancellationToken, DoubleConsumer onProgress) {
-        ClipFiles.createDirectories(target.getParent());
         Path partial = ClipFiles.partialOf(target);
+        if (!runToPartial(arguments, partial, durationMs, logFile, cancellationToken, onProgress)) {
+            return false;
+        }
+        ClipFiles.commit(partial, target);
+        return true;
+    }
+
+    /**
+     * Runs ffmpeg into partial and leaves it there, for a caller that checks the result before renaming it (export,
+     * guide 7.4). Returns false if the run was cancelled, leaving nothing behind.
+     */
+    public boolean runToPartial(List<String> arguments, Path partial, long durationMs, Path logFile,
+                                CancellationToken cancellationToken, DoubleConsumer onProgress) {
+        ClipFiles.createDirectories(partial.getParent());
 
         List<String> command = new ArrayList<>(List.of(ffmpeg().toString(), "-nostdin", "-hide_banner", "-y"));
         command.addAll(arguments);
@@ -67,7 +85,6 @@ public class FfmpegRunner {
             ClipFiles.discard(partial);
             return false;
         }
-        ClipFiles.commit(partial, target);
         return true;
     }
 

@@ -2,9 +2,11 @@ package com.dettavo.feature.project;
 
 import com.dettavo.common.exception.RevisionConflictException;
 import com.dettavo.config.ApplicationProperties;
+import com.dettavo.feature.media.ClipFiles;
 import com.dettavo.feature.project.dto.ProjectSummaryResponse;
 import com.dettavo.feature.project.dto.SaveEditsRequest;
 import com.dettavo.feature.project.model.Clip;
+import com.dettavo.feature.project.model.ClipArtifacts;
 import com.dettavo.feature.project.model.Edits;
 import com.dettavo.feature.project.model.Project;
 import com.dettavo.feature.project.model.TokenIds;
@@ -13,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Files;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -29,6 +32,7 @@ public class ProjectService {
 
     private final ProjectStore projectStore;
     private final ApplicationProperties properties;
+    private final ClipFiles clipFiles;
 
     /** Home page cards, most recently changed first. */
     public List<ProjectSummaryResponse> list() {
@@ -56,8 +60,35 @@ public class ProjectService {
         return projectStore.create(project);
     }
 
+    /**
+     * The full project, with each clip's artifacts limited to the cache files still on disk (guide 9, Build Plan 19b),
+     * so a ready clip whose playback copy is gone shows "Playback files are missing" with Rebuild. project.json itself
+     * is not changed; Rebuild writes the files and the artifacts again.
+     */
     public Project get(UUID projectId) {
-        return projectStore.load(projectId);
+        Project project = projectStore.load(projectId);
+        return project.toBuilder()
+                .clips(project.clips().stream().map(clip -> withExistingArtifacts(projectId, clip)).toList())
+                .build();
+    }
+
+    private Clip withExistingArtifacts(UUID projectId, Clip clip) {
+        ClipArtifacts artifacts = clip.artifacts();
+        if (artifacts == null) {
+            return clip;
+        }
+        ClipArtifacts existing = new ClipArtifacts(
+                existing(projectId, clip.id(), artifacts.audio16k()),
+                existing(projectId, clip.id(), artifacts.thumbnail()),
+                existing(projectId, clip.id(), artifacts.proxy()));
+        return existing.equals(artifacts) ? clip : clip.toBuilder().artifacts(existing).build();
+    }
+
+    private String existing(UUID projectId, String clipId, String relativePath) {
+        if (relativePath == null) {
+            return null;
+        }
+        return Files.isRegularFile(clipFiles.artifact(projectId, clipId, relativePath)) ? relativePath : null;
     }
 
     public Project rename(UUID projectId, String name) {

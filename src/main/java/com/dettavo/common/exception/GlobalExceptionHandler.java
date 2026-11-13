@@ -83,11 +83,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem;
     }
 
-    @ExceptionHandler(PairingKeyInvalidException.class)
-    public ProblemDetail handlePairingKeyInvalid(PairingKeyInvalidException exception) {
-        return problem(HttpStatus.UNAUTHORIZED, ErrorCode.PAIRING_KEY_INVALID, exception.getMessage());
-    }
-
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleIllegalArgument(IllegalArgumentException exception) {
         return problem(HttpStatus.BAD_REQUEST, ErrorCode.INVALID_REQUEST, exception.getMessage());

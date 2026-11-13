@@ -22,14 +22,13 @@ import java.util.regex.Pattern;
 
 /**
  * Runs whisper-cli on one chunk WAV (guide 6.2). The flags are fixed by configuration, never by a request:
- * -l en -t 4 -ojf -pp, DTW and the repetition-loop guard from checks 1d and 1j, and the project's "Words to
- * expect" as the prompt (check 1e). Progress comes from the "progress = N%" lines -pp writes to standard error.
+ * -l en -t 4 -ojf -pp, then DTW and the repetition-loop guard from checks 1d and 1j. There is no prompt.
+ * Progress comes from the "progress = N%" lines -pp writes to standard error.
  */
 @Component
 public class WhisperRunner {
 
     private static final Pattern PROGRESS = Pattern.compile("progress\\s*=\\s*(\\d+)\\s*%");
-    private static final int PROMPT_LIMIT = 200;
     private static final String PARTIAL_SUFFIX = "-partial";
     private static final String JSON = ".json";
 
@@ -59,7 +58,7 @@ public class WhisperRunner {
      * Transcribes audio into target (cache/whisper/chunk-NNNN.json). onProgress gets 0..1 for this chunk.
      * Returns false if cancelled, leaving no JSON behind.
      */
-    public boolean transcribe(Path audio, Path target, String prompt, Path logFile,
+    public boolean transcribe(Path audio, Path target, Path logFile,
                               CancellationToken cancellationToken, DoubleConsumer onProgress) {
         String name = target.getFileName().toString();
         Path partialBase = target.resolveSibling(name.substring(0, name.length() - JSON.length()) + PARTIAL_SUFFIX);
@@ -68,7 +67,7 @@ public class WhisperRunner {
 
         ProcessResult result;
         try {
-            result = nativeProcessRunner.run(new ProcessSpecification(command(audio, partialBase, prompt), null, null,
+            result = nativeProcessRunner.run(new ProcessSpecification(command(audio, partialBase), null, null,
                     null, progressListener(onProgress), logFile), cancellationToken);
         } catch (RuntimeException e) {
             ClipFiles.discard(output);
@@ -87,7 +86,7 @@ public class WhisperRunner {
         return true;
     }
 
-    private List<String> command(Path audio, Path outputBase, String prompt) {
+    private List<String> command(Path audio, Path outputBase) {
         List<String> command = new ArrayList<>(List.of(
                 whisperCli().toString(),
                 "-m", model().toString(),
@@ -107,12 +106,6 @@ public class WhisperRunner {
             case NONE -> {
                 // Unguarded; the normalizer still drops a phrase repeated three or more times in a row.
             }
-        }
-        String words = prompt == null ? "" : prompt.strip();
-        if (!words.isEmpty()) {
-            // One argument, never split; --carry-initial-prompt keeps it past the first 30 s window.
-            command.addAll(List.of("--prompt", words.length() > PROMPT_LIMIT ? words.substring(0, PROMPT_LIMIT) : words,
-                    "--carry-initial-prompt"));
         }
         return command;
     }

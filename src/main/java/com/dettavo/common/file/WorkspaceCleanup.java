@@ -12,13 +12,17 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Stream;
 
-/** On startup, deletes the *.tmp and *.partial files an interrupted save or upload left in project folders (guide 4.4). */
+/**
+ * On startup, deletes the *.tmp, *.partial and *.filtergraph files an interrupted save, upload or export left in
+ * project folders (guide 4.4).
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class WorkspaceCleanup {
 
     public static final String PARTIAL_SUFFIX = ".partial";
+    public static final String FILTER_GRAPH_SUFFIX = ".filtergraph";
 
     private final WorkspacePaths workspacePaths;
 
@@ -43,6 +47,6 @@ public class WorkspaceCleanup {
 
     private static boolean isLeftover(Path file) {
         String name = file.getFileName().toString();
-        return name.endsWith(AtomicFileWriter.TEMPORARY_SUFFIX) || name.endsWith(PARTIAL_SUFFIX);
+        return name.endsWith(AtomicFileWriter.TEMPORARY_SUFFIX) || name.endsWith(PARTIAL_SUFFIX) || name.endsWith(FILTER_GRAPH_SUFFIX);
     }
 }

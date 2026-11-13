@@ -25,9 +25,7 @@ public record Project(
         List<Clip> clips,
         Edits edits,
         /* The last 20 job summaries; any left RUNNING are marked FAILED on startup. */
-        List<JobSummary> jobs,
-        /* "Words to expect", whisper's prompt (decision 1e); null until set. Step 11a adds the field to the editor. */
-        String wordsToExpect) {
+        List<JobSummary> jobs) {
 
     public static final int SCHEMA_VERSION = 2;
 

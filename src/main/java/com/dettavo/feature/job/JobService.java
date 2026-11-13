@@ -105,6 +105,16 @@ public class JobService {
         return job.snapshot();
     }
 
+    /** Cancels a clip's queued and running jobs, as when the clip is deleted (Build Plan 11c). */
+    public void cancelClipJobs(UUID projectId, String clipId) {
+        jobs.values().stream()
+                .filter(job -> job.projectId().equals(projectId) && clipId.equals(job.clipId()))
+                .filter(job -> job.status() == JobStatus.QUEUED || job.status() == JobStatus.RUNNING)
+                .map(Job::id)
+                .toList()
+                .forEach(this::cancel);
+    }
+
     /** Every job of a project: the summaries in project.json, overlaid with the jobs in memory. */
     public List<JobResponse> projectJobs(UUID projectId) {
         Project project = projectStore.load(projectId);

@@ -144,7 +144,7 @@ public class TranscriptionService {
                     estimating = true;
                 }
                 context.progress((double) index / total, stage);
-                if (!transcribeChunk(context, audio, wav, chunk, json, project.wordsToExpect(), logFile, index, total, stage)) {
+                if (!transcribeChunk(context, audio, wav, chunk, json, logFile, index, total, stage)) {
                     return false;
                 }
             }
@@ -173,11 +173,11 @@ public class TranscriptionService {
 
     /** Cuts one chunk WAV, runs whisper on it and deletes the WAV. Returns false if cancelled. */
     private boolean transcribeChunk(JobContext context, Path audio, WavAudio wav, ChunkPlanner.Chunk chunk, Path json,
-                                    String prompt, Path logFile, int index, int total, String stage) {
+                                    Path logFile, int index, int total, String stage) {
         Path chunkAudio = transcriptionFiles.chunkAudio(context.projectId(), context.clipId(), chunk);
         wav.writeSlice(audio, chunk.startMs(), chunk.endMs(), chunkAudio);
         try {
-            return whisperRunner.transcribe(chunkAudio, json, prompt, logFile, context.cancellationToken(),
+            return whisperRunner.transcribe(chunkAudio, json, logFile, context.cancellationToken(),
                     fraction -> context.progress((index + fraction) / total, stage));
         } finally {
             ClipFiles.discard(chunkAudio);

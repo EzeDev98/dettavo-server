@@ -16,7 +16,7 @@ import java.util.List;
 /**
  * Writes a ProblemDetail body from a servlet filter, where GlobalExceptionHandler cannot reach.
  * When the request comes from an allowed origin, the CORS headers are added too, so the
- * client can read the status (for example 401 to show the "Not paired" screen) instead of
+ * client can read the status (for example 403 for a refused origin) instead of
  * seeing a network error.
  */
 @Component

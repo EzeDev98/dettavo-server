@@ -8,9 +8,10 @@ Where this file and the technical guide or build plan disagree, this file wins. 
 |---|---|
 | Repositories | Two independent repositories: `dettavo-server` (Spring Boot) and `dettavo-client` (Vite and React). Replaces the single `dettavo/` repository with `backend/` and `frontend/` (guide 3, plan 2a). Commands run from the root of the repository they name |
 | Independence | The server never builds, serves, starts or refers to the client. They are linked only by configuration: the client's `VITE_API_BASE_URL` and the server's `app.security.allowed-origins` |
-| Server address | `http://127.0.0.1:2060` (`server.port=${PORT:2060}`). Replaces 8080 everywhere in the guide and plan |
-| Client address | `http://127.0.0.1:2061` for both `npm run dev` and `npm run preview`. Replaces 5173 everywhere. No Vite `/api` proxy |
-| Host name | Always `127.0.0.1`, never `localhost`: `127.0.0.1:2061` and `127.0.0.1:2060` are the same site, so the pairing cookie is sent |
+| Server address | `http://localhost:2060` (`server.port=${PORT:2060}`). Replaces 8080 everywhere in the guide and plan |
+| Client address | `http://localhost:2061` for both `npm run dev` and `npm run preview`. Replaces 5173 everywhere. No Vite `/api` proxy |
+| Host name | Always `localhost` in addresses (13 Nov 2026, replacing `127.0.0.1`). The app must be opened at `http://localhost:2061`, the one allowed origin. The server still listens on `127.0.0.1` only (`server.address`) |
+| Pairing | None (13 Nov 2026): no pairing key, no `te_session` cookie, no `/session/pair` and no Pair screen, whatever the guide, the plan (3e, 4e, 20c) and prototype 5f say. The loopback binding, the Host check, the Origin check on writes and CORS protect the service. `/system/status` no longer reports `paired` |
 | Running | Server: `./mvnw spring-boot:run` (development) or `./mvnw package` then `java -Xmx512m -jar target/dettavo.jar`. Client: `npm run dev`, or `npm run build` then `npm run preview`. No launcher scripts: plan 2f and guide 11.2 are dropped |
 | Server build | Spring Boot 4.1.2 (guide said 4.1.1), Java 21, webmvc, validation, Lombok, springdoc 3.1.0; jar name `dettavo.jar`; base package `com.dettavo` |
 | Client build | Ahorra's `package.json` scripts, `.nvmrc` (22), `jsconfig.json` aliases, ESLint and Stylelint configs, without PatternFly. `VITE_API_BASE_URL` in `.env` (git-ignored; `.env.example` committed), read only in `src/core/config/env.js` |
@@ -21,19 +22,17 @@ The client calls the server across origins, as Ahorra does. Every later step tha
 
 | Where | Rule | Step |
 |---|---|---|
-| Server, `config/WebConfig` | `/api/**` allows only `app.security.allowed-origins` (default `http://127.0.0.1:2061`), credentials on; methods GET, POST, PUT, PATCH, DELETE, OPTIONS; request headers `Content-Type`, `If-Match`, `X-File-Name`, `Range`; exposed headers `ETag`, `Content-Range`, `Accept-Ranges`, `Content-Length`, `Content-Disposition`, `Location`; preflight cached 1 h. Add a header here whenever a new one is sent or read | 2d (done) |
+| Server, `config/WebConfig` | `/api/**` allows only `app.security.allowed-origins` (default `http://localhost:2061`), no credentials; methods GET, POST, PUT, PATCH, DELETE, OPTIONS; request headers `Content-Type`, `If-Match`, `X-File-Name`, `Range`; exposed headers `ETag`, `Content-Range`, `Accept-Ranges`, `Content-Length`, `Content-Disposition`, `Location`; preflight cached 1 h. Add a header here whenever a new one is sent or read | 2d (done) |
 | Server, `ApplicationProperties` | `app.security.allowed-origins` moves into `ApplicationProperties` with the other `app.*` values; the guide's "dev profile adds the 5173 origins" is replaced by this one property | 3a |
 | Server, `LocalOnlyFilter` | The Origin check on writes uses the same allowed-origins list. `OPTIONS` preflight requests must pass the filter so CORS can answer them. Host check allows `127.0.0.1:2060` and `localhost:2060` | 3d |
-| Server, pairing cookie | `te_session`: `HttpOnly`, `SameSite=Strict`, `Path=/`, not `Secure` (plain http on loopback) | 3e |
-| Pairing | No `start.sh --pair`. The server logs the pairing key at startup; the user opens `http://127.0.0.1:2061/pair#<key>` | 3e, 4e |
-| Client, `httpClient.js` | Every request sends `credentials: 'include'`; the base URL comes only from `env.js` | 4d |
-| Client, `index.html` | Content-Security-Policy meta tag with `connect-src 'self' http://127.0.0.1:2060` and `media-src 'self' blob: http://127.0.0.1:2060` | 4d |
-| Client, progress | `new EventSource(url, { withCredentials: true })` | 7e |
-| Client, upload | `XMLHttpRequest` with `withCredentials = true`; `X-File-Name` triggers a preflight | 8a, 9b |
+| Client, `httpClient.js` | No credentials (there is no cookie); the base URL comes only from `env.js` | 4d |
+| Client, `index.html` | Content-Security-Policy meta tag with `connect-src 'self' http://localhost:2060` and `media-src 'self' blob: http://localhost:2060` | 4d |
+| Client, progress | `new EventSource(url)`, without credentials | 7e |
+| Client, upload | `XMLHttpRequest` without credentials; `X-File-Name` triggers a preflight | 8a, 9b |
 | Client, revisions | `If-Match` on save; the revision is read from the exposed `ETag` | 6d, 14f |
-| Client, proxy video | `<video crossOrigin="use-credentials">`; seeking depends on the exposed `Content-Range` and `Accept-Ranges` | 8g, 15a |
+| Client, proxy video | `<video crossOrigin="anonymous">`; seeking depends on the exposed `Content-Range` and `Accept-Ranges` | 8g, 15a |
 | Client, downloads | The file name comes from the exposed `Content-Disposition` | 17g, 18c |
-| Client, PWA | Installs from `http://127.0.0.1:2061`; the service worker caches only the client's own files, never `/api` | 4f, 20 |
+| Client, PWA | Installs from `http://localhost:2061`; the service worker caches only the client's own files, never `/api` | 4f, 20 |
 
 ## Tools on the MacBook (2018 MacBook Pro, Intel, zsh)
 
@@ -54,7 +53,7 @@ The client calls the server across origins, as Ahorra does. Every later step tha
 | Threads | 4 (`app.transcription.threads`) | 6 threads: 147.8 s but 821 s CPU against 649 s, 7% faster for 27% more CPU |
 | Memory limit | 1.2 GB (guide said 1 GB) | Peaks: 1,133 MB (flash attention on), 1,230 MB (flash attention off), 1,282 MB (`--dtw`) |
 | Default flags until Step 10b | `-l en -t 4 -ojf -pp`, flash attention on (whisper's default), no `--dtw` | Lightest option; see the postponed checks below |
-| Prompt (check 1e, done 12 Nov) | Dettavo edits any video, so there is no fixed word list. Each project has a "Words to expect" field (Step 11a), empty by default; when it has words, WhisperRunner passes `--prompt "<words>" --carry-initial-prompt` | On `test-1.wav`, plain small.en wrote "I hope I", "Nera", "launch" and "pence"; with Ahorra, naira, lunch and spent in the prompt it wrote all four correctly, with no extra time or memory. `--carry-initial-prompt` keeps the prompt active past the first 30 s window, and whisper-cli 1.9.5 accepts it. Deleting a misheard word still cuts the right audio, because cuts use word times, not spelling |
+| Prompt (check 1e, decided 13 Nov) | None. Whisper runs without `--prompt`; there is no "Words to expect" field and no `app.transcription.prompt`. A better model is the way to improve accuracy later | A per-project word list made the app more complicated than it is worth. Deleting a misheard word still cuts the right audio, because cuts use word times, not spelling |
 | DTW constraint | `--dtw small.en` only works with `-nfa` (flash attention off); whisper silently disables it otherwise ("dtw_token_timestamps is not supported with flash_attn - disabling") | Seen in the Step 1 log. With `-nfa --dtw`: 176.7 s, 1,282 MB |
 | Repetition loops | A loop guard is required (see 10b below) | On a noisy recording whisper repeated one phrase ("maybe it's not working") from about 2:30 to 10:00 with made-up timings |
 | Known misheard words | Ahorra → "Ahura"; onboarding → "your body"; splash → "splice"/"supply"; Google Play → "go-go play"; handoff → "and off"; Vite → "Fighter"/"VITA"; Red Hat Text → "Red Hat test"; helper → "epimeter"; placeholders → "place orders"; theme → "time" | Ahorra Episode 3, first 10 minutes |
@@ -85,13 +84,13 @@ Inputs still needed: a real Ahorra **screen recording** of at least 10 minutes w
 | 5c | Clip dragging | Drag a ready tile onto the timeline, drag clips along it to reorder, drag one back to the tray to take it off. An accent line shows where a clip will land. The transcript follows the timeline order. Each move is one undoable edit. Cuts are stored by word id, so they survive moving a clip or taking it off. Pause tokens and cuts never span two clips |
 | 5d | Clip tile states | Uploading, Preparing and Transcribing with a percentage and a progress bar; "Waiting (n ahead)", because preparing and transcribing share one queue, one clip at a time; Failed with Retry; Upload stopped with Try again; "No speech found", which can still go on the timeline; "Not on timeline". The trash icon (on hover or focus) uses the projects' Delete modal; deleting a clip takes it out of the tray, the queue and the timeline and cannot be undone |
 | 5e | Editor before a clip is ready | Files added from Home make a new project; files added in the editor join the open one. Nothing goes on the timeline until a ready clip is dragged there. Until then the transcript pane shows "Getting your clip ready" with a row per clip (state, percentage, progress bar), the video pane says "Nothing to play yet", the transport and Export are off, the ruler is hidden and the timeline shows a drag hint |
-| 5f | Install flow | Onboarding, Install, hand-off, Setup, Pair (a key field as well as `/pair#key`) and Service down, on Ahorra's screen pattern. Full-width buttons are 42 px, Ahorra's block-button height. The install dialog is Chrome's own, drawn by the browser: on the Mac it is centred under the toolbar ("Install app", Learn More, Cancel, Next) |
+| 5f | Install flow | Onboarding, Install, hand-off, Setup and Service down (no Pair: see Pairing), on Ahorra's screen pattern. Full-width buttons are 42 px, Ahorra's block-button height. The install dialog is Chrome's own, drawn by the browser: on the Mac it is centred under the toolbar ("Install app", Learn More, Cancel, Next) |
 
 ## Transcription (Build Plan Step 10)
 
 | Area | Decision |
 |---|---|
-| Prompt | Comes from the project's `wordsToExpect` in project.json (decision 1e), not `app.transcription.prompt` as plan 10g and guide 6.2 say. Empty until Step 11a adds the field to the editor; when set, WhisperRunner passes `--prompt "<words>" --carry-initial-prompt`, cut to 200 characters |
+| Prompt | None (decision 1e): no `wordsToExpect` in project.json and no `app.transcription.prompt`, whatever plan 10g and guide 6.2 say. WhisperRunner never passes `--prompt` |
 | Checks 1d and 1j | Settings, not code: `app.transcription.dtw` (adds `-nfa --dtw <model>`) and `app.transcription.loop-guard` (`none`, `max-context-zero` for `-mc 0`, or `vad` with `app.transcription.vad-model`). Defaults: no DTW, no guard, until the checks are done. `video-1.mov` and the old `labels.py` no longer exist: 1j runs on `test-1.wav` against `test-1-small-prompt.txt`, and `labels.py` was rewritten on 12 Nov |
 | Repetition filter (10c) | A phrase of 2 to 12 words repeated 3 or more times in a row keeps its first copy. Single words are never dropped ("no, no, no" is real speech) |
 | Non-speech (10c) | Bracketed spans such as `[BLANK_AUDIO]`, `(laughs)` and `*music*` are dropped, even when split across tokens, and so are words with no letter or digit |
@@ -104,7 +103,7 @@ Inputs still needed: a real Ahorra **screen recording** of at least 10 minutes w
 
 | Area | Decision |
 |---|---|
-| Prompt | Comes from the project's `wordsToExpect` in project.json (decision 1e), not `app.transcription.prompt` as plan 10g and guide 6.2 say. Empty until Step 11a adds the field to the editor; when set, WhisperRunner passes `--prompt "<words>" --carry-initial-prompt`, cut to 200 characters |
+| Prompt | None (decision 1e): no `wordsToExpect` in project.json and no `app.transcription.prompt`, whatever plan 10g and guide 6.2 say. WhisperRunner never passes `--prompt` |
 | Checks 1d and 1j | Settings, not code: `app.transcription.dtw` (adds `-nfa --dtw <model>`) and `app.transcription.loop-guard` (`none`, `max-context-zero` for `-mc 0`, or `vad` with `app.transcription.vad-model`). Defaults: no DTW, no guard, until the checks are done. `video-1.mov` and the old `labels.py` no longer exist: 1j runs on `test-1.wav` against `test-1-small-prompt.txt`, and `labels.py` was rewritten on 12 Nov |
 | Repetition filter (10c) | A phrase of 2 to 12 words repeated 3 or more times in a row keeps its first copy. Single words are never dropped ("no, no, no" is real speech) |
 | Non-speech (10c) | Bracketed spans such as `[BLANK_AUDIO]`, `(laughs)` and `*music*` are dropped, even when split across tokens, and so are words with no letter or digit |
@@ -113,3 +112,32 @@ Inputs still needed: a real Ahorra **screen recording** of at least 10 minutes w
 | ETA | Measured from the first chunk actually transcribed in this run, so reused chunks do not make it too low |
 | Pause refinement | Guide 6.4 defaults as `app.transcription.*`: 20th percentile, x3, 20 ms hangover and lead-in, 300 ms limit. A floor of about -60 dBFS stops digital silence from making every frame loud |
 
+## Export (Build Plan Step 17)
+
+| Area | Decision |
+|---|---|
+| Graph and memory | Built on the guide 7.2 one-graph pattern. Checks 1f and 1g have not been run yet; 17 is not done until they pass on a real screen recording. 17f (per-segment fallback) is built only if 1g fails |
+| Audio rate | Every export's audio is 48 kHz stereo (7.1 rule 2), so WAV is 48 kHz too, not the source rate 7.3 mentions |
+| Frame snapping | Video exports snap keep segments to the first video clip's average frame rate; MP3 and WAV keep the planner's milliseconds |
+| MP4 without video | 400 "An MP4 export needs a video clip on the timeline"; the dialog hides MP4 in that case (18a) |
+| Finished file name | The job does not carry the file name; the dialog reads the newest entry of GET /exports after the job succeeds |
+| Development endpoints | GET /projects/{id}/export-plan (and /filtergraph) and POST /dev/projects/{id}/export-broken, dev profile only |
+
+## Install flow (Build Plan Step 20)
+
+| Area | Decision |
+|---|---|
+| App icon | The owner's Dettavo logo (the D with the orange cut, 13 Nov 2026), kept exactly as supplied in dettavo-client `assets/icon-source.png`. `npm run icons` (sharp, from Ahorra's script) only scales it: the maskable and Apple icons place it on #1e1e1e, the others keep its transparent surround |
+| Routes | Onboarding `/welcome` and Install `/install`, in a browser tab only. Every other route needs the installed app (InstallGuard) and sends a tab to `/welcome` |
+| First-run order | Service down, then Setup while a tool is missing, then Home (plan 20c without Pair) |
+| Install steps | Chrome on the Mac only, as in the prototype. Ahorra's other platforms are left out. The steps show when Chrome cancels its dialog or offers none within 10 seconds |
+| Service down | No "Try again" button (prototype 5f): the status query asks every 3 seconds |
+| Development | `VITE_SKIP_INSTALL_GUARD=true` in `.env` lets `npm run dev` run the whole app in a tab. A build ignores it |
+| Updates | Ahorra's UpdatePrompt, already in place and unchanged: a new build is offered within 3 minutes, or when the app comes back to the front |
+EOFcat >> docs/decisions.md <<'EOF'
+
+## Colour
+
+| Area | Decision |
+|---|---|
+| Accent (13 Nov 2026) | Electric lavender `#c4a1ff` replaces the prototype's blue everywhere: primary buttons, focus, selection, the current word, progress and the timeline's clip blocks. The app icon is the owner's logo, not recoloured. Primary buttons carry dark text (`#1e1e1e`), since white on lavender is too faint. Everything else in the prototype stays as drawn |

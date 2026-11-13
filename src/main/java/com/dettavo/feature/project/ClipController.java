@@ -34,7 +34,7 @@ public class ClipController {
     }
 
     @DeleteMapping(ApiPaths.PROJECT_CLIP)
-    @Operation(summary = "Delete a clip", description = "Deletes the clip's folder, takes it off the timeline and drops its edits. "
+    @Operation(summary = "Delete a clip", description = "Cancels the clip's jobs, deletes its folder, takes it off the timeline and drops its edits. "
             + "204; the ETag holds the edits revision, which goes up when the edits changed.")
     public ResponseEntity<Void> delete(@PathVariable UUID projectId, @PathVariable String clipId) {
         Project project = clipService.delete(projectId, clipId);

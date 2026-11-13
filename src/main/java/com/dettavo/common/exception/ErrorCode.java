@@ -3,8 +3,6 @@ package com.dettavo.common.exception;
 /** The {@code code} carried by every error body, so the client can react without parsing text. */
 public enum ErrorCode {
     INVALID_REQUEST,
-    NOT_PAIRED,
-    PAIRING_KEY_INVALID,
     HOST_NOT_ALLOWED,
     ORIGIN_NOT_ALLOWED,
     NOT_FOUND,

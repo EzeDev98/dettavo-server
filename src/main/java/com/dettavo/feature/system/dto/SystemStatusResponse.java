@@ -6,11 +6,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The answer to GET /system/status: whether this browser is paired, and every tool, encoder
- * and model the server needs, with anything missing listed with its fix.
+ * The answer to GET /system/status: every tool, encoder and model the server needs, with
+ * anything missing listed with its fix. ready is true when nothing is missing.
  */
-public record SystemStatusResponse(boolean paired,
-                                   boolean ready,
+public record SystemStatusResponse(boolean ready,
                                    ToolInventory.Tool ffmpeg,
                                    ToolInventory.Tool ffprobe,
                                    ToolInventory.Tool whisperCli,
@@ -21,8 +20,8 @@ public record SystemStatusResponse(boolean paired,
                                    List<ToolInventory.MissingItem> missing,
                                    String checkedAt) {
 
-    public static SystemStatusResponse of(boolean paired, ToolInventory inventory) {
-        return new SystemStatusResponse(paired, inventory.missing().isEmpty(),
+    public static SystemStatusResponse of(ToolInventory inventory) {
+        return new SystemStatusResponse(inventory.missing().isEmpty(),
                 inventory.ffmpeg(), inventory.ffprobe(), inventory.whisperCli(),
                 inventory.ffmpegSevenOrNewer(), inventory.filterGraphFlag(), inventory.encoders(),
                 inventory.model(), inventory.missing(), inventory.checkedAt());

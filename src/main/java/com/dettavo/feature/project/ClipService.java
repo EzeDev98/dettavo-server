@@ -4,6 +4,7 @@ import com.dettavo.common.exception.ClipNotFoundException;
 import com.dettavo.common.exception.InsufficientDiskSpaceException;
 import com.dettavo.common.file.WorkspacePaths;
 import com.dettavo.config.ApplicationProperties;
+import com.dettavo.feature.job.JobService;
 import com.dettavo.feature.project.dto.AddClipRequest;
 import com.dettavo.feature.project.model.Clip;
 import com.dettavo.feature.project.model.ClipSource;
@@ -33,6 +34,7 @@ public class ClipService {
     private final ProjectStore projectStore;
     private final WorkspacePaths workspacePaths;
     private final ApplicationProperties properties;
+    private final JobService jobService;
 
     /** Adds an EMPTY clip with the next id, ready for its upload. It goes to the tray, not the timeline. */
     public Clip add(UUID projectId, AddClipRequest request) {
@@ -55,8 +57,12 @@ public class ClipService {
         return added;
     }
 
-    /** Removes the clip, its timeline entry and its edits, then deletes its folder. Returns the saved project. */
+    /**
+     * Cancels the clip's jobs, removes the clip, its timeline entry and its edits, then deletes its folder. Returns
+     * the saved project.
+     */
     public Project delete(UUID projectId, String clipId) {
+        jobService.cancelClipJobs(projectId, clipId);
         Project updated = projectStore.update(projectId, project -> {
             project.findClip(clipId).orElseThrow(() -> new ClipNotFoundException(projectId, clipId));
             return project.toBuilder()

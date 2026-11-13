@@ -21,7 +21,6 @@ public class WorkspacePaths {
     private static final String PROJECTS = "projects";
     private static final String MODELS = "models";
     private static final String LOGS = "logs";
-    private static final String PAIRING_KEY = "pairing.key";
 
     private final Path root;
 
@@ -51,10 +50,6 @@ public class WorkspacePaths {
 
     public Path logsDirectory() {
         return root.resolve(LOGS);
-    }
-
-    public Path pairingKeyFile() {
-        return root.resolve(PAIRING_KEY);
     }
 
     /** The folder of one project. The id is a UUID, so it can never contain a path separator. */

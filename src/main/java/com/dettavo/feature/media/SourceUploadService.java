@@ -72,7 +72,8 @@ public class SourceUploadService {
         try {
             mediaProbeService.probe(target, null, CancellationToken.none());
         } catch (UnsupportedMediaException e) {
-            projectStore.updateClip(projectId, clipId, current -> current.toBuilder().state(ClipState.FAILED).build());
+            projectStore.updateClip(projectId, clipId,
+                    current -> current.toBuilder().state(ClipState.FAILED).failure(e.getMessage()).build());
             throw e;
         }
 

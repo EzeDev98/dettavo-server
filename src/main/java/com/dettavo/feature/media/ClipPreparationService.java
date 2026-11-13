@@ -100,7 +100,7 @@ public class ClipPreparationService {
 
         projectStore.deleteRecursively(clipFiles.cacheDirectory(projectId, clipId));
         Clip clip = projectStore.updateClip(projectId, clipId,
-                current -> current.toBuilder().state(ClipState.PREPARING).artifacts(null).build());
+                current -> current.toBuilder().state(ClipState.PREPARING).artifacts(null).failure(null).build());
 
         context.progress(0, "Reading the file");
         ClipSource probed = mediaProbeService.probe(source, logFile, token);

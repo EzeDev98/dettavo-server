@@ -5,11 +5,16 @@ public final class ApiPaths {
 
     public static final String BASE = "/api/v1";
     public static final String SYSTEM_STATUS = BASE + "/system/status";
-    public static final String SESSION_PAIR = BASE + "/session/pair";
 
     public static final String PROJECTS = BASE + "/projects";
     public static final String PROJECT = PROJECTS + "/{projectId}";
     public static final String PROJECT_EDITS = PROJECT + "/edits";
+    public static final String PROJECT_EDIT_PLAN = PROJECT + "/edit-plan";
+    public static final String PROJECT_EXPORT = PROJECT + "/export";
+    public static final String PROJECT_EXPORT_PLAN = PROJECT + "/export-plan";
+    public static final String PROJECT_EXPORTS = PROJECT + "/exports";
+    public static final String PROJECT_EXPORT_FILE = PROJECT_EXPORTS + "/{fileName}";
+    public static final String PROJECT_EXPORT_REVEAL = PROJECT_EXPORT_FILE + "/reveal";
     public static final String PROJECT_CLIPS = PROJECT + "/clips";
     public static final String PROJECT_CLIP = PROJECT_CLIPS + "/{clipId}";
     public static final String PROJECT_EVENTS = PROJECT + "/events";

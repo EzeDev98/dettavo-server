@@ -30,7 +30,6 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedMethods(ALLOWED_METHODS)
                 .allowedHeaders(ALLOWED_HEADERS)
                 .exposedHeaders(EXPOSED_HEADERS)
-                .allowCredentials(true)
                 .maxAge(PREFLIGHT_CACHE_SECONDS);
     }
 }
