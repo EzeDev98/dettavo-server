@@ -125,40 +125,53 @@ public class EditPlanner {
     }
 
     /**
-     * Rules 2 to 5 for one clip: consecutive removed tokens merge into one cut; a trimmed pause longer than keepMs
-     * gets a cut centred in it that never merges; a cut holding a word shrinks by padMs at both ends; cuts are
-     * clamped to the clip and dropped when nothing is left of them.
+     * Rules 2 to 5 for one clip. Consecutive removed tokens merge into one cut (rule 2), and a pause with a removed
+     * token on both sides is removed with them (rule 2b), so a deleted passage leaves none of its gaps behind. A trimmed
+     * pause longer than keepMs gets a cut centred in it that never merges (rule 3). Rule 4, for a cut holding a word, at
+     * each end: where the cut ends on a removed pause, the edge moves padMs into the cut, clear of the kept word beside
+     * it; where it ends on a removed word, the edge moves padMs out into the kept pause beside it (no further than that
+     * pause's middle), so no sound of the removed word is left. Cuts are clamped to the clip and dropped when nothing is
+     * left of them (rule 5).
      */
     private static List<PlannedCut> planClipCuts(List<Token> tokens, Set<String> removed, Map<String, Integer> trims,
                                                  int padMs, long durationMs) {
         List<PlannedCut> cuts = new ArrayList<>();
         PlannedCut run = null;
         boolean runHasWord = false;
+        boolean firstIsWord = false;
+        boolean lastIsWord = false;
+        Token before = null;
+        Token after = null;
 
-        for (Token token : tokens) {
-            if (removed.contains(token.id())) {
+        for (int index = 0; index < tokens.size(); index++) {
+            Token token = tokens.get(index);
+            if (isRemoved(tokens, index, removed)) {
                 if (run == null) {
                     run = new PlannedCut(token.startMs(), token.endMs(), CutKind.REMOVE, List.of());
                     runHasWord = false;
+                    firstIsWord = token.word();
+                    before = index > 0 ? tokens.get(index - 1) : null;
                 }
                 run.endMs = token.endMs();
                 runHasWord |= token.word();
+                lastIsWord = token.word();
+                after = index + 1 < tokens.size() ? tokens.get(index + 1) : null;
                 run.tokenIds.add(token.id());
                 continue;
             }
             if (run != null) {
-                cuts.add(padded(run, runHasWord ? padMs : 0));
+                cuts.add(padded(run, runHasWord, padMs, firstIsWord ? before : null, lastIsWord ? after : null));
                 run = null;
             }
             Integer keepMs = token.word() ? null : trims.get(token.id());
             if (keepMs != null && token.endMs() - token.startMs() > keepMs) {
                 // keepMs is split between the two sides; an odd millisecond stays after the cut.
-                long before = keepMs / 2;
-                cuts.add(new PlannedCut(token.startMs() + before, token.endMs() - (keepMs - before), CutKind.TRIM, List.of(token.id())));
+                long keepBefore = keepMs / 2;
+                cuts.add(new PlannedCut(token.startMs() + keepBefore, token.endMs() - (keepMs - keepBefore), CutKind.TRIM, List.of(token.id())));
             }
         }
         if (run != null) {
-            cuts.add(padded(run, runHasWord ? padMs : 0));
+            cuts.add(padded(run, runHasWord, padMs, firstIsWord ? before : null, lastIsWord ? after : null));
         }
 
         List<PlannedCut> clamped = new ArrayList<>();
@@ -172,10 +185,32 @@ public class EditPlanner {
         return clamped;
     }
 
-    private static PlannedCut padded(PlannedCut cut, int padMs) {
-        cut.startMs += padMs;
-        cut.endMs -= padMs;
+    /** Rule 2b: a removed token, or a pause with a removed token on both sides. */
+    private static boolean isRemoved(List<Token> tokens, int index, Set<String> removed) {
+        Token token = tokens.get(index);
+        if (removed.contains(token.id())) {
+            return true;
+        }
+        return !token.word() && index > 0 && index < tokens.size() - 1
+                && removed.contains(tokens.get(index - 1).id()) && removed.contains(tokens.get(index + 1).id());
+    }
+
+    /**
+     * Rule 4. outwardBefore, outwardAfter: the kept pause beside an end that is a removed word, or null where that end
+     * is a removed pause (or the clip's edge).
+     */
+    private static PlannedCut padded(PlannedCut cut, boolean hasWord, int padMs, Token outwardBefore, Token outwardAfter) {
+        if (!hasWord) {
+            return cut;
+        }
+        cut.startMs = outwardBefore != null ? Math.max(midpoint(outwardBefore), cut.startMs - padMs) : cut.startMs + padMs;
+        cut.endMs = outwardAfter != null ? Math.min(midpoint(outwardAfter), cut.endMs + padMs) : cut.endMs - padMs;
         return cut;
+    }
+
+    /** The middle of a pause: the furthest a cut's padding may reach into a kept pause, so it never touches a kept word. */
+    private static long midpoint(Token token) {
+        return token.startMs() + (token.endMs() - token.startMs()) / 2;
     }
 
     /**

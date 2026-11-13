@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -53,7 +54,9 @@ public class ProjectController {
     @Operation(summary = "Open a project", description = "The full project.json. The ETag holds the edits revision for the next save.")
     public ResponseEntity<Project> get(@PathVariable UUID projectId) {
         Project project = projectService.get(projectId);
-        return ResponseEntity.ok().eTag(Revisions.tag(project)).body(project);
+        // no-store: the ETag is the edits revision, which a clip finishing does not change. A browser that kept this
+        // response would revalidate it with If-None-Match, get 304 and show the old clip states.
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).eTag(Revisions.tag(project)).body(project);
     }
 
     @PatchMapping(ApiPaths.PROJECT)
