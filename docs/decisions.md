@@ -50,10 +50,11 @@ The client calls the server across origins, as Ahorra does. Every later step tha
 
 | Setting | Value | Evidence |
 |---|---|---|
-| Model | `ggml-small.en.bin` | 10 min of Ahorra Episode 3 audio transcribed in 158.8 s (3.8x realtime); clear text, only names and jargon wrong |
+| Model | `ggml-small.en.bin` | 10 min of Ahorra Episode 3 audio transcribed in 158.8 s (3.8x realtime); clear text, only names and jargon wrong. On 12 Nov it was compared with `ggml-medium.en.bin` on a 15:25 recording (`~/Dettavo/spikes/test-1.wav`): small.en with a prompt took 272.1 s at 1,165 MB; medium.en took 807.8 s at 2,473 MB, above the 1.2 GB limit, and still heard "Ahorra" as "Ahura". medium.en is rejected and its model file deleted |
 | Threads | 4 (`app.transcription.threads`) | 6 threads: 147.8 s but 821 s CPU against 649 s, 7% faster for 27% more CPU |
 | Memory limit | 1.2 GB (guide said 1 GB) | Peaks: 1,133 MB (flash attention on), 1,230 MB (flash attention off), 1,282 MB (`--dtw`) |
 | Default flags until Step 10b | `-l en -t 4 -ojf -pp`, flash attention on (whisper's default), no `--dtw` | Lightest option; see the postponed checks below |
+| Prompt (check 1e, done 12 Nov) | Dettavo edits any video, so there is no fixed word list. Each project has a "Words to expect" field (Step 11a), empty by default; when it has words, WhisperRunner passes `--prompt "<words>" --carry-initial-prompt` | On `test-1.wav`, plain small.en wrote "I hope I", "Nera", "launch" and "pence"; with Ahorra, naira, lunch and spent in the prompt it wrote all four correctly, with no extra time or memory. `--carry-initial-prompt` keeps the prompt active past the first 30 s window, and whisper-cli 1.9.5 accepts it. Deleting a misheard word still cuts the right audio, because cuts use word times, not spelling |
 | DTW constraint | `--dtw small.en` only works with `-nfa` (flash attention off); whisper silently disables it otherwise ("dtw_token_timestamps is not supported with flash_attn - disabling") | Seen in the Step 1 log. With `-nfa --dtw`: 176.7 s, 1,282 MB |
 | Repetition loops | A loop guard is required (see 10b below) | On a noisy recording whisper repeated one phrase ("maybe it's not working") from about 2:30 to 10:00 with made-up timings |
 | Known misheard words | Ahorra → "Ahura"; onboarding → "your body"; splash → "splice"/"supply"; Google Play → "go-go play"; handoff → "and off"; Vite → "Fighter"/"VITA"; Red Hat Text → "Red Hat test"; helper → "epimeter"; placeholders → "place orders"; theme → "time" | Ahorra Episode 3, first 10 minutes |
@@ -65,7 +66,6 @@ These were postponed on 11 Nov 2026 because they tune configuration, not code st
 | Run in | Check (plan ref) | How | Pass | Decides | Until then |
 |---|---|---|---|---|---|
 | 10b, before WhisperRunner's flags are final | Word edges and pauses (1d) | Make labels from `spike-t4.json` (plain) and `spike-dtw.json` (dtw); open `spike-10min.wav` in Audacity, import the word and pause labels, and check 20 word edges and 10 pauses | 18 of 20 edges within 100 ms; every pause of 0.5 s or more shows as at least 0.3 s | Whether to use `-nfa --dtw small.en`. If DTW does not clearly win, keep flash attention on and no DTW, saving about 150 MB | Flash attention on, no DTW |
-| 10b | Names with `--prompt` (1e) | Re-run the chosen setting with `--prompt "Ahorra, Vite, PWA, onboarding, splash screen, Google Play, Red Hat Text, handoff, helper, placeholders, Spring Boot, React"` | The names in "Known misheard words" are spelled correctly; list any that are not | The 11a "Words to expect" default text. Note: with `-mc 0` the prompt only reaches the first 30 s window unless `--carry-initial-prompt` is added | No prompt |
 | 10b | Repetition-loop guard (new) | Re-run the noisy recording (`video-1.mov`, which looped) once with `-mc 0` and once with `--vad -vm <silero model>`; re-run Ahorra audio with the winner | The loop is gone and the Ahorra transcript is no worse | Which guard WhisperRunner always passes. 10c should also drop a phrase repeated 3 or more times in a row as a last defence | Not guarded |
 | 10e | Pause thresholds | Use the 1d pause checks to tune `app.transcription.*` (percentile, factor, hangover, limits) | Pauses checked in 1d come out at least as long as they really are | PauseRefiner defaults | Guide 6.4 defaults |
 | 8e | Proxy and seeking (1h) | Build a 720p VideoToolbox proxy of 10 minutes of a real Ahorra screen recording; in Chrome, jump `currentTime` by 0.5 s every 3 s | Encode under 2.5 min; every jump lands with no visible stall over about 100 ms | Proxy encoder settings | Guide 5.5 command |
@@ -73,3 +73,43 @@ These were postponed on 11 Nov 2026 because they tune configuration, not code st
 | Before 17 | 200-segment export (1g) | Generate a 200-segment graph (keep 2.5 s, cut 0.5 s) and export again under `/usr/bin/time -l` | Peak under 1.5 GB and faster than realtime | If it fails, the per-segment fallback becomes the main export path (17f) | One-graph export |
 
 Inputs still needed: a real Ahorra **screen recording** of at least 10 minutes with speech throughout, for 8e and the two export checks. Screen recordings are variable frame rate (seen: `r_frame_rate` 60, `avg_frame_rate` 59.96), so the export graph must add `fps=<avg_frame_rate>` before the trims (guide 7.2), and macOS recording names contain a hidden narrow space before "pm" (rename the file or use a wildcard).
+
+## Prototype approvals (Build Plan Step 5)
+
+`Dettavo.html` is the approved prototype for every screen. All of Step 5 was approved on 12 Nov 2026.
+
+| Step | Screen | Decision |
+|---|---|---|
+| 5a | Home | One "Add video or audio for editing" button that also takes a file dropped anywhere, then the Projects grid. Rename in place: Enter or clicking away saves, Escape cancels, no Save button. Delete asks in a modal |
+| 5b | Editor layout | Projects back button; Clips tray under the transcript with a dashed plus tile; a plus button in the toolbar; a file dropped anywhere in the editor lands in the tray; the timeline replaces the waveform; one joined transcript with each clip's name where it starts |
+| 5c | Clip dragging | Drag a ready tile onto the timeline, drag clips along it to reorder, drag one back to the tray to take it off. An accent line shows where a clip will land. The transcript follows the timeline order. Each move is one undoable edit. Cuts are stored by word id, so they survive moving a clip or taking it off. Pause tokens and cuts never span two clips |
+| 5d | Clip tile states | Uploading, Preparing and Transcribing with a percentage and a progress bar; "Waiting (n ahead)", because preparing and transcribing share one queue, one clip at a time; Failed with Retry; Upload stopped with Try again; "No speech found", which can still go on the timeline; "Not on timeline". The trash icon (on hover or focus) uses the projects' Delete modal; deleting a clip takes it out of the tray, the queue and the timeline and cannot be undone |
+| 5e | Editor before a clip is ready | Files added from Home make a new project; files added in the editor join the open one. Nothing goes on the timeline until a ready clip is dragged there. Until then the transcript pane shows "Getting your clip ready" with a row per clip (state, percentage, progress bar), the video pane says "Nothing to play yet", the transport and Export are off, the ruler is hidden and the timeline shows a drag hint |
+| 5f | Install flow | Onboarding, Install, hand-off, Setup, Pair (a key field as well as `/pair#key`) and Service down, on Ahorra's screen pattern. Full-width buttons are 42 px, Ahorra's block-button height. The install dialog is Chrome's own, drawn by the browser: on the Mac it is centred under the toolbar ("Install app", Learn More, Cancel, Next) |
+
+## Transcription (Build Plan Step 10)
+
+| Area | Decision |
+|---|---|
+| Prompt | Comes from the project's `wordsToExpect` in project.json (decision 1e), not `app.transcription.prompt` as plan 10g and guide 6.2 say. Empty until Step 11a adds the field to the editor; when set, WhisperRunner passes `--prompt "<words>" --carry-initial-prompt`, cut to 200 characters |
+| Checks 1d and 1j | Settings, not code: `app.transcription.dtw` (adds `-nfa --dtw <model>`) and `app.transcription.loop-guard` (`none`, `max-context-zero` for `-mc 0`, or `vad` with `app.transcription.vad-model`). Defaults: no DTW, no guard, until the checks are done. `video-1.mov` and the old `labels.py` no longer exist: 1j runs on `test-1.wav` against `test-1-small-prompt.txt`, and `labels.py` was rewritten on 12 Nov |
+| Repetition filter (10c) | A phrase of 2 to 12 words repeated 3 or more times in a row keeps its first copy. Single words are never dropped ("no, no, no" is real speech) |
+| Non-speech (10c) | Bracketed spans such as `[BLANK_AUDIO]`, `(laughs)` and `*music*` are dropped, even when split across tokens, and so are words with no letter or digit |
+| Chunk files | Each finished chunk's JSON stays in `cache/whisper/` for resuming; chunk WAVs are deleted once whisper has read them. Rebuilding the cache deletes both; the transcript is in project.json |
+| Cancel and restart | A cancelled transcription returns the clip to PREPARED; a failed one leaves it FAILED, with Retry (`POST .../transcribe`). On startup, clips left TRANSCRIBING, or PREPARED with no transcript, are queued again and resume from their finished chunks, unless their last transcription was cancelled |
+| ETA | Measured from the first chunk actually transcribed in this run, so reused chunks do not make it too low |
+| Pause refinement | Guide 6.4 defaults as `app.transcription.*`: 20th percentile, x3, 20 ms hangover and lead-in, 300 ms limit. A floor of about -60 dBFS stops digital silence from making every frame loud |
+
+## Transcription (Build Plan Step 10)
+
+| Area | Decision |
+|---|---|
+| Prompt | Comes from the project's `wordsToExpect` in project.json (decision 1e), not `app.transcription.prompt` as plan 10g and guide 6.2 say. Empty until Step 11a adds the field to the editor; when set, WhisperRunner passes `--prompt "<words>" --carry-initial-prompt`, cut to 200 characters |
+| Checks 1d and 1j | Settings, not code: `app.transcription.dtw` (adds `-nfa --dtw <model>`) and `app.transcription.loop-guard` (`none`, `max-context-zero` for `-mc 0`, or `vad` with `app.transcription.vad-model`). Defaults: no DTW, no guard, until the checks are done. `video-1.mov` and the old `labels.py` no longer exist: 1j runs on `test-1.wav` against `test-1-small-prompt.txt`, and `labels.py` was rewritten on 12 Nov |
+| Repetition filter (10c) | A phrase of 2 to 12 words repeated 3 or more times in a row keeps its first copy. Single words are never dropped ("no, no, no" is real speech) |
+| Non-speech (10c) | Bracketed spans such as `[BLANK_AUDIO]`, `(laughs)` and `*music*` are dropped, even when split across tokens, and so are words with no letter or digit |
+| Chunk files | Each finished chunk's JSON stays in `cache/whisper/` for resuming; chunk WAVs are deleted once whisper has read them. Rebuilding the cache deletes both; the transcript is in project.json |
+| Cancel and restart | A cancelled transcription returns the clip to PREPARED; a failed one leaves it FAILED, with Retry (`POST .../transcribe`). On startup, clips left TRANSCRIBING, or PREPARED with no transcript, are queued again and resume from their finished chunks, unless their last transcription was cancelled |
+| ETA | Measured from the first chunk actually transcribed in this run, so reused chunks do not make it too low |
+| Pause refinement | Guide 6.4 defaults as `app.transcription.*`: 20th percentile, x3, 20 ms hangover and lead-in, 300 ms limit. A floor of about -60 dBFS stops digital silence from making every frame loud |
+

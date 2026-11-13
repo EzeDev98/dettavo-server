@@ -1,11 +1,9 @@
 package com.dettavo.common.exception;
 
-import java.util.UUID;
-
-/** A project may have only one queued or running job. */
+/** A clip may have one queued or running PREPARE_MEDIA or TRANSCRIBE job, and a project one EXPORT. */
 public class HeavyJobAlreadyQueuedException extends RuntimeException {
 
-    public HeavyJobAlreadyQueuedException(UUID projectId) {
-        super("Project " + projectId + " already has a queued or running job");
+    public HeavyJobAlreadyQueuedException(String message) {
+        super(message);
     }
 }

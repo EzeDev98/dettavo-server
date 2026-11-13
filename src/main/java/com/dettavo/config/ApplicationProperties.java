@@ -1,6 +1,8 @@
 package com.dettavo.config;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -38,10 +40,31 @@ public record ApplicationProperties(
                         @NotEmpty List<String> searchPath) {
     }
 
+    /**
+     * whisper-cli and the steps after it (guide 6). dtw and loopGuard come from checks 1d and 1j; the rest tune
+     * pause refinement (6.4) and paragraphs (6.5).
+     */
     public record Transcription(@Min(1) int chunkMinutes,
                                 @Min(0) int overlapSeconds,
                                 @Min(1) int threads,
-                                @NotBlank String language) {
+                                @NotBlank String language,
+                                boolean dtw,
+                                @NotNull LoopGuard loopGuard,
+                                @NotNull Path vadModel,
+                                @Min(1) @Max(99) int noisePercentile,
+                                @DecimalMin("1.0") double speechFactor,
+                                @Min(0) int hangoverMs,
+                                @Min(0) int leadInMs,
+                                @Min(0) int maxEdgeShiftMs,
+                                @Min(1) int paragraphPauseMs,
+                                @Min(1) int paragraphMaxWords) {
+
+        /** What stops whisper repeating one phrase: nothing, -mc 0, or voice activity detection. */
+        public enum LoopGuard {
+            NONE,
+            MAX_CONTEXT_ZERO,
+            VAD
+        }
     }
 
     public record Peaks(@Min(1) int perSecond) {

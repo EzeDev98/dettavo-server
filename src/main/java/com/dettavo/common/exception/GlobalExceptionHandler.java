@@ -27,6 +27,26 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(HttpStatus.NOT_FOUND, ErrorCode.PROJECT_NOT_FOUND, exception.getMessage());
     }
 
+    @ExceptionHandler(ClipNotFoundException.class)
+    public ProblemDetail handleClipNotFound(ClipNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, ErrorCode.CLIP_NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(JobNotFoundException.class)
+    public ProblemDetail handleJobNotFound(JobNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, ErrorCode.JOB_NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(MediaNotFoundException.class)
+    public ProblemDetail handleMediaNotFound(MediaNotFoundException exception) {
+        return problem(HttpStatus.NOT_FOUND, ErrorCode.MEDIA_NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(ClipStateConflictException.class)
+    public ProblemDetail handleClipStateConflict(ClipStateConflictException exception) {
+        return problem(HttpStatus.CONFLICT, ErrorCode.CLIP_STATE_CONFLICT, exception.getMessage());
+    }
+
     @ExceptionHandler(RevisionConflictException.class)
     public ProblemDetail handleRevisionConflict(RevisionConflictException exception) {
         ProblemDetail problem = problem(HttpStatus.CONFLICT, ErrorCode.REVISION_CONFLICT, exception.getMessage());
@@ -41,7 +61,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(InsufficientDiskSpaceException.class)
     public ProblemDetail handleInsufficientDiskSpace(InsufficientDiskSpaceException exception) {
-        return problem(HttpStatus.CONTENT_TOO_LARGE, ErrorCode.INSUFFICIENT_DISK_SPACE, exception.getMessage());
+        ProblemDetail problem = problem(HttpStatus.CONTENT_TOO_LARGE, ErrorCode.INSUFFICIENT_DISK_SPACE, exception.getMessage());
+        problem.setProperty("requiredBytes", exception.getRequiredBytes());
+        problem.setProperty("availableBytes", exception.getAvailableBytes());
+        return problem;
     }
 
     @ExceptionHandler(UnsupportedMediaException.class)
