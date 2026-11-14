@@ -23,6 +23,9 @@ public final class ApiPaths {
     public static final String CLIP_TRANSCRIBE = PROJECT_CLIP + "/transcribe";
     public static final String CLIP_PROXY = PROJECT_CLIP + "/media/proxy";
     public static final String CLIP_THUMBNAIL = PROJECT_CLIP + "/media/thumbnail";
+    public static final String CLIP_LEVELS = PROJECT_CLIP + "/media/levels";
+    public static final String CLIP_FILMSTRIP = PROJECT_CLIP + "/media/filmstrip";
+    public static final String CLIP_FILMSTRIP_IMAGE = CLIP_FILMSTRIP + "/image";
 
     public static final String JOBS = BASE + "/jobs";
     public static final String JOB = JOBS + "/{jobId}";

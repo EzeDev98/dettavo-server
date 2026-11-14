@@ -5,20 +5,16 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * Turns whisper's tokens into the clip's words (guide 6.3) and joins the chunks (6.1). The text itself is never
- * edited; only non-speech is dropped, and, as a last defence against repetition loops (Step 1), a phrase repeated
- * three or more times in a row keeps only its first copy.
+ * edited and every spoken word is kept, retakes included: a sentence said five times appears five times, so each take
+ * can be cut. Only non-speech is dropped. Repetition loops are prevented in whisper itself (loop-guard, -mc 0).
  */
 @Component
 public class TranscriptNormalizer {
 
     private static final int MAX_BRACKETED_WORDS = 6;
-    private static final int MIN_PHRASE_WORDS = 2;
-    private static final int MAX_PHRASE_WORDS = 12;
-    private static final int REPEATS_TO_DROP = 3;
 
     /**
      * The words of one chunk, in clip time, keeping only those that start inside the chunk's own stretch
@@ -53,7 +49,7 @@ public class TranscriptNormalizer {
         return withoutNonSpeech(words).stream().filter(word -> chunk.keeps(word.startMs())).toList();
     }
 
-    /** After every chunk is joined: fixed order, a minimum length, and no repetition loops. */
+    /** After every chunk is joined: fixed order and a minimum length. */
     public List<TimedWord> finish(List<TimedWord> joined) {
         List<TimedWord> ordered = new ArrayList<>(joined.size());
         long previousEnd = Long.MIN_VALUE;
@@ -63,7 +59,7 @@ public class TranscriptNormalizer {
             ordered.add(word.withTimes(start, end));
             previousEnd = end;
         }
-        return withoutRepeatedPhrases(ordered);
+        return ordered;
     }
 
     /** Ids w00001 upward in order, given only after stitching (6.3, rule 5). */
@@ -100,59 +96,6 @@ public class TranscriptNormalizer {
             }
         }
         return kept;
-    }
-
-    /** Keeps the first copy of a phrase of 2 to 12 words that is repeated 3 or more times in a row. */
-    static List<TimedWord> withoutRepeatedPhrases(List<TimedWord> words) {
-        int count = words.size();
-        List<String> keys = words.stream().map(word -> key(word.text())).toList();
-        boolean[] drop = new boolean[count];
-        int index = 0;
-        while (index < count) {
-            int phrase = 0;
-            int copies = 0;
-            for (int length = MIN_PHRASE_WORDS; length <= MAX_PHRASE_WORDS && index + length * REPEATS_TO_DROP <= count; length++) {
-                int found = 1;
-                while (index + (found + 1) * length <= count && samePhrase(keys, index, index + found * length, length)) {
-                    found++;
-                }
-                if (found >= REPEATS_TO_DROP) {
-                    phrase = length;
-                    copies = found;
-                    break;
-                }
-            }
-            if (copies >= REPEATS_TO_DROP) {
-                for (int repeated = index + phrase; repeated < index + copies * phrase; repeated++) {
-                    drop[repeated] = true;
-                }
-                index += copies * phrase;
-            } else {
-                index++;
-            }
-        }
-        List<TimedWord> kept = new ArrayList<>(count);
-        for (int position = 0; position < count; position++) {
-            if (!drop[position]) {
-                kept.add(words.get(position));
-            }
-        }
-        return kept;
-    }
-
-    private static boolean samePhrase(List<String> keys, int first, int second, int length) {
-        for (int offset = 0; offset < length; offset++) {
-            if (!keys.get(first + offset).equals(keys.get(second + offset))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static String key(String text) {
-        StringBuilder key = new StringBuilder();
-        text.toLowerCase(Locale.ROOT).codePoints().filter(Character::isLetterOrDigit).forEach(key::appendCodePoint);
-        return key.toString();
     }
 
     private static boolean opensNonSpeech(String text) {

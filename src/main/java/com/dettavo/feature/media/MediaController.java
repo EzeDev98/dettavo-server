@@ -4,6 +4,7 @@ import com.dettavo.common.exception.ClipNotFoundException;
 import com.dettavo.common.exception.MediaNotFoundException;
 import com.dettavo.config.ApiPaths;
 import com.dettavo.feature.job.JobResponse;
+import com.dettavo.feature.media.dto.FilmstripResponse;
 import com.dettavo.feature.project.ProjectStore;
 import com.dettavo.feature.project.model.Clip;
 import com.dettavo.feature.project.model.ClipArtifacts;
@@ -40,6 +41,7 @@ public class MediaController {
     private final ProjectStore projectStore;
     private final ClipFiles clipFiles;
     private final ClipPreparationService clipPreparationService;
+    private final TimelineMediaService timelineMediaService;
 
     @PostMapping(ApiPaths.CLIP_PREPARE)
     @Operation(summary = "Rebuild a clip's cache", description = "Deletes cache/ and runs PREPARE_MEDIA again; the transcript is kept. "
@@ -60,6 +62,26 @@ public class MediaController {
     @Operation(summary = "A video clip's thumbnail", description = "thumb.jpg, revalidated by ETag.")
     public ResponseEntity<Resource> thumbnail(@PathVariable UUID projectId, @PathVariable String clipId, WebRequest request) {
         return serve(artifactFile(projectId, clipId, ClipArtifacts::thumbnail, "thumbnail"), MediaType.IMAGE_JPEG, request);
+    }
+
+    @GetMapping(ApiPaths.CLIP_LEVELS)
+    @Operation(summary = "A clip's audio level", description = "levels.bin: one byte per frame of 1000 / app.peaks.per-second ms, "
+            + "the RMS level from -60 dB (0) to 0 dB (255). Drawn as the timeline's waveform and used to find silences.")
+    public ResponseEntity<Resource> levels(@PathVariable UUID projectId, @PathVariable String clipId, WebRequest request) {
+        return serve(timelineMediaService.levels(projectId, clipId), MediaType.APPLICATION_OCTET_STREAM, request);
+    }
+
+    @GetMapping(ApiPaths.CLIP_FILMSTRIP)
+    @Operation(summary = "A video clip's filmstrip layout", description = "Starts making the filmstrip if it is not there yet; "
+            + "status is BUILDING until the image can be fetched, then READY.")
+    public FilmstripResponse filmstrip(@PathVariable UUID projectId, @PathVariable String clipId) {
+        return timelineMediaService.filmstrip(projectId, clipId);
+    }
+
+    @GetMapping(ApiPaths.CLIP_FILMSTRIP_IMAGE)
+    @Operation(summary = "A video clip's filmstrip image", description = "filmstrip.jpg, revalidated by ETag.")
+    public ResponseEntity<Resource> filmstripImage(@PathVariable UUID projectId, @PathVariable String clipId, WebRequest request) {
+        return serve(timelineMediaService.filmstripImage(projectId, clipId), MediaType.IMAGE_JPEG, request);
     }
 
     private Path artifactFile(UUID projectId, String clipId, Function<ClipArtifacts, String> pick, String what) {

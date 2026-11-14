@@ -9,6 +9,8 @@ import com.dettavo.feature.project.model.Clip;
 import com.dettavo.feature.project.model.ClipArtifacts;
 import com.dettavo.feature.project.model.Edits;
 import com.dettavo.feature.project.model.Project;
+import com.dettavo.feature.project.model.RangeCut;
+import com.dettavo.feature.project.model.SplitPoint;
 import com.dettavo.feature.project.model.TokenIds;
 import com.dettavo.feature.project.model.Trim;
 import lombok.RequiredArgsConstructor;
@@ -113,7 +115,8 @@ public class ProjectService {
 
     /**
      * Refuses a save that names a clip not in the project, puts a clip on the timeline twice, holds a
-     * malformed token id, trims something that is not a pause, or both removes and trims one pause (rule 3).
+     * malformed token id, trims something that is not a pause, both removes and trims one pause (rule 3), repeats a
+     * range cut id, or has a range cut that ends before it starts (rule 9).
      */
     private static Edits validatedEdits(Project project, SaveEditsRequest request, long revision) {
         Set<String> clipIds = project.clips().stream().map(Clip::id).collect(Collectors.toSet());
@@ -145,7 +148,28 @@ public class ProjectService {
             }
         }
 
-        return new Edits(revision, request.timeline(), List.copyOf(removed), request.trims(), request.padMs());
+        Set<String> rangeCutIds = new HashSet<>();
+        for (RangeCut rangeCut : request.rangeCuts()) {
+            requireClip(rangeCut.clipId(), clipIds);
+            if (!rangeCutIds.add(rangeCut.id())) {
+                throw new IllegalArgumentException("Range cut " + rangeCut.id() + " is listed twice");
+            }
+            if (rangeCut.endMs() <= rangeCut.startMs()) {
+                throw new IllegalArgumentException("Range cut " + rangeCut.id() + " must end after it starts");
+            }
+        }
+        for (SplitPoint split : request.splits()) {
+            requireClip(split.clipId(), clipIds);
+        }
+
+        return new Edits(revision, request.timeline(), List.copyOf(removed), request.trims(), request.padMs(),
+                request.rangeCuts(), request.splits());
+    }
+
+    private static void requireClip(String clipId, Set<String> clipIds) {
+        if (!clipIds.contains(clipId)) {
+            throw new IllegalArgumentException("The edits name clip " + clipId + ", which is not in this project");
+        }
     }
 
     private static void requireToken(String tokenId, Set<String> clipIds, boolean pauseOnly) {

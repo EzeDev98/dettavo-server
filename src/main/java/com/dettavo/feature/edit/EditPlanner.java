@@ -5,6 +5,7 @@ import com.dettavo.feature.project.model.Clip;
 import com.dettavo.feature.project.model.ClipState;
 import com.dettavo.feature.project.model.Edits;
 import com.dettavo.feature.project.model.Project;
+import com.dettavo.feature.project.model.RangeCut;
 import com.dettavo.feature.project.model.Trim;
 import com.dettavo.feature.project.model.Word;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +22,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * The edit rules of guide 4.9, numbered 1 to 8. editPlan.js and tokens.js in dettavo-client implement the same rules;
+ * The edit rules of guide 4.9, numbered 1 to 9. editPlan.js and tokens.js in dettavo-client implement the same rules;
  * a rule change is made in both in the same commit. Export always uses this plan.
  */
 @Component
@@ -40,12 +41,18 @@ public class EditPlanner {
         private long endMs;
         private CutKind kind;
         private final List<String> tokenIds;
+        private final List<String> rangeCutIds;
 
         private PlannedCut(long startMs, long endMs, CutKind kind, List<String> tokenIds) {
+            this(startMs, endMs, kind, tokenIds, List.of());
+        }
+
+        private PlannedCut(long startMs, long endMs, CutKind kind, List<String> tokenIds, List<String> rangeCutIds) {
             this.startMs = startMs;
             this.endMs = endMs;
             this.kind = kind;
             this.tokenIds = new ArrayList<>(tokenIds);
+            this.rangeCutIds = new ArrayList<>(rangeCutIds);
         }
     }
 
@@ -61,6 +68,8 @@ public class EditPlanner {
         for (Trim trim : edits.trims()) {
             trims.put(trim.pauseId(), trim.keepMs());
         }
+        Map<String, List<RangeCut>> rangeCutsByClip = edits.rangeCuts().stream()
+                .collect(Collectors.groupingBy(RangeCut::clipId));
 
         List<Cut> cuts = new ArrayList<>();
         List<KeepSegment> keepSegments = new ArrayList<>();
@@ -75,10 +84,11 @@ public class EditPlanner {
                 continue;
             }
             long durationMs = durationOf(clip);
-            // Rule 8: a clip that is not READY has no tokens and is kept whole.
-            List<PlannedCut> clipCuts = isReady(clip)
-                    ? absorbTinyKeeps(planClipCuts(tokensOf(clip, durationMs), removed, trims, edits.padMs(), durationMs), durationMs)
-                    : List.of();
+            // Rule 8: a clip that is not READY has no tokens, so only its range cuts apply (rule 9).
+            List<Token> tokens = isReady(clip) ? tokensOf(clip, durationMs) : List.of();
+            List<PlannedCut> planned = new ArrayList<>(planClipCuts(tokens, removed, trims, edits.padMs(), durationMs));
+            planned.addAll(rangeCutsOf(rangeCutsByClip.getOrDefault(clipId, List.of()), tokens, durationMs));
+            List<PlannedCut> clipCuts = absorbTinyKeeps(planned, durationMs);
 
             long cursor = 0;
             for (PlannedCut cut : clipCuts) {
@@ -87,7 +97,7 @@ public class EditPlanner {
                     editedMs += cut.startMs - cursor;
                 }
                 cuts.add(new Cut(clipId, cut.startMs, cut.endMs, timelineMs + cut.startMs, timelineMs + cut.endMs,
-                        cut.kind, cut.tokenIds));
+                        cut.kind, cut.tokenIds, cut.rangeCutIds));
                 cursor = cut.endMs;
             }
             if (cursor < durationMs) {
@@ -185,6 +195,27 @@ public class EditPlanner {
         return clamped;
     }
 
+    /**
+     * Rule 9: a range cut takes out exactly startMs to endMs of its clip, clamped to the clip, with no padding. The
+     * tokens wholly inside it go with it, so its words leave the transcript like removed ones.
+     */
+    private static List<PlannedCut> rangeCutsOf(List<RangeCut> rangeCuts, List<Token> tokens, long durationMs) {
+        List<PlannedCut> cuts = new ArrayList<>();
+        for (RangeCut rangeCut : rangeCuts) {
+            long startMs = Math.max(0, rangeCut.startMs());
+            long endMs = Math.min(durationMs, rangeCut.endMs());
+            if (endMs <= startMs) {
+                continue;
+            }
+            List<String> covered = tokens.stream()
+                    .filter(token -> token.startMs() >= startMs && token.endMs() <= endMs)
+                    .map(Token::id)
+                    .toList();
+            cuts.add(new PlannedCut(startMs, endMs, CutKind.valueOf(rangeCut.kind().name()), covered, List.of(rangeCut.id())));
+        }
+        return cuts;
+    }
+
     /** Rule 2b: a removed token, or a pause with a removed token on both sides. */
     private static boolean isRemoved(List<Token> tokens, int index, Set<String> removed) {
         Token token = tokens.get(index);
@@ -215,7 +246,8 @@ public class EditPlanner {
 
     /**
      * Rule 5: a keep segment shorter than app.edit.min-keep-segment-ms is absorbed into the cut next to it. Between
-     * two cuts the two become one; at the clip's start or end the cut grows to the edge.
+     * two cuts the two become one (overlapping cuts too); at the clip's start or end the cut grows to the edge. Merged
+     * cuts keep their kind when it is the same, and become REMOVE when it is not.
      */
     private List<PlannedCut> absorbTinyKeeps(List<PlannedCut> cuts, long durationMs) {
         int minKeepMs = properties.edit().minKeepSegmentMs();
@@ -227,8 +259,9 @@ public class EditPlanner {
             PlannedCut last = merged.isEmpty() ? null : merged.getLast();
             if (last != null && cut.startMs - last.endMs < minKeepMs) {
                 last.endMs = Math.max(last.endMs, cut.endMs);
-                last.kind = last.kind == CutKind.TRIM && cut.kind == CutKind.TRIM ? CutKind.TRIM : CutKind.REMOVE;
+                last.kind = last.kind == cut.kind ? last.kind : CutKind.REMOVE;
                 last.tokenIds.addAll(cut.tokenIds);
+                last.rangeCutIds.addAll(cut.rangeCutIds);
             } else {
                 merged.add(cut);
             }

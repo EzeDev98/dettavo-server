@@ -31,6 +31,8 @@ public class ClipFiles {
     public static final String THUMBNAIL = CACHE_FOLDER + "/thumb.jpg";
     public static final String PROXY_VIDEO = CACHE_FOLDER + "/proxy.mp4";
     public static final String PROXY_AUDIO = CACHE_FOLDER + "/proxy.m4a";
+    public static final String LEVELS = CACHE_FOLDER + "/levels.bin";
+    public static final String FILMSTRIP = CACHE_FOLDER + "/filmstrip.jpg";
 
     private final ProjectStore projectStore;
     private final WorkspacePaths workspacePaths;

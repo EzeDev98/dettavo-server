@@ -11,6 +11,8 @@ import com.dettavo.feature.project.model.ClipSource;
 import com.dettavo.feature.project.model.ClipState;
 import com.dettavo.feature.project.model.Edits;
 import com.dettavo.feature.project.model.Project;
+import com.dettavo.feature.project.model.RangeCut;
+import com.dettavo.feature.project.model.SplitPoint;
 import com.dettavo.feature.project.model.Trim;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -80,10 +82,16 @@ public class ClipService {
         List<String> timeline = edits.timeline().stream().filter(id -> !id.equals(clipId)).toList();
         List<String> removed = edits.removed().stream().filter(id -> !id.startsWith(prefix)).toList();
         List<Trim> trims = edits.trims().stream().filter(trim -> !trim.pauseId().startsWith(prefix)).toList();
+        List<RangeCut> rangeCuts = edits.rangeCuts().stream().filter(rangeCut -> !rangeCut.clipId().equals(clipId)).toList();
+        List<SplitPoint> splits = edits.splits().stream().filter(split -> !split.clipId().equals(clipId)).toList();
         boolean changed = timeline.size() != edits.timeline().size()
                 || removed.size() != edits.removed().size()
-                || trims.size() != edits.trims().size();
-        return changed ? new Edits(edits.revision() + 1, timeline, removed, trims, edits.padMs()) : edits;
+                || trims.size() != edits.trims().size()
+                || rangeCuts.size() != edits.rangeCuts().size()
+                || splits.size() != edits.splits().size();
+        return changed
+                ? new Edits(edits.revision() + 1, timeline, removed, trims, edits.padMs(), rangeCuts, splits)
+                : edits;
     }
 
     private void requireDiskSpace(long sizeBytes) {
