@@ -13,11 +13,6 @@ import org.springframework.validation.annotation.Validated;
 import java.nio.file.Path;
 import java.util.List;
 
-/**
- * Every {@code app.*} setting, bound once at startup. Each value can be overridden with
- * the environment variable named in application.properties, or in the git-ignored
- * application-local.properties.
- */
 @Validated
 @ConfigurationProperties(prefix = "app")
 public record ApplicationProperties(
@@ -32,7 +27,6 @@ public record ApplicationProperties(
         @Valid @NotNull Disk disk,
         @Valid @NotNull Security security) {
 
-    /** Tool paths; a blank path means "find it in {@code searchPath}". */
     public record Tools(String ffmpeg,
                         String ffprobe,
                         String whisperCli,
@@ -40,10 +34,6 @@ public record ApplicationProperties(
                         @NotEmpty List<String> searchPath) {
     }
 
-    /**
-     * whisper-cli and the steps after it (guide 6). dtw and loopGuard come from checks 1d and 1j; the rest tune
-     * pause refinement (6.4) and paragraphs (6.5).
-     */
     public record Transcription(@Min(1) int chunkMinutes,
                                 @Min(0) int overlapSeconds,
                                 @Min(1) int threads,

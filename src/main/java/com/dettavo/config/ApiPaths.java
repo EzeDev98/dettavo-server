@@ -1,6 +1,5 @@
 package com.dettavo.config;
 
-/** URL paths shared by controllers and the security filter. */
 public final class ApiPaths {
 
     public static final String BASE = "/api/v1";
