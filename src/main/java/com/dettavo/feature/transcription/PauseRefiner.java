@@ -14,8 +14,11 @@ import java.util.List;
 
 /**
  * Tightens word edges with the energy of the clip's 16 kHz audio, so pauses are as long as they really are
- * (guide 6.4). Edges only ever move inwards, towards speech: a pause can grow but never shrink. Refining every
- * word's start and end also refines the clip's lead-in (first word's start) and tail (last word's end).
+ * (guide 6.4). Edges only ever move inwards, towards speech: a pause can grow but never shrink. Whisper often stretches
+ * a word over the silence after it, so an edge may move as far as it takes to reach the word's own sound (up to
+ * max-edge-shift-ms), never closer than TimedWord.MIN_DURATION_MS to the other edge. A word with no loud frame at all
+ * is left as whisper timed it. Refining every word's start and end also refines the clip's lead-in (first word's start)
+ * and tail (last word's end).
  */
 @Component
 public class PauseRefiner {
@@ -44,13 +47,29 @@ public class PauseRefiner {
     }
 
     private TimedWord refine(TimedWord word, double[] energy, double threshold) {
-        long midpoint = (word.startMs() + word.endMs()) / 2;
-        long start = refinedStart(word.startMs(), Math.min(word.startMs() + settings.maxEdgeShiftMs(), midpoint), energy, threshold);
-        long end = refinedEnd(word.endMs(), Math.max(word.endMs() - settings.maxEdgeShiftMs(), midpoint), energy, threshold);
+        if (!hasSound(word, energy, threshold)) {
+            return word;
+        }
+        long startLimit = Math.min(word.startMs() + settings.maxEdgeShiftMs(), word.endMs() - TimedWord.MIN_DURATION_MS);
+        long start = refinedStart(word.startMs(), startLimit, energy, threshold);
+        long endLimit = Math.max(word.endMs() - settings.maxEdgeShiftMs(), start + TimedWord.MIN_DURATION_MS);
+        long end = refinedEnd(word.endMs(), endLimit, energy, threshold);
         if (end - start < TimedWord.MIN_DURATION_MS) {
             return word;
         }
         return word.withTimes(start, end);
+    }
+
+    /** Whether any 10 ms frame inside the word is loud: without one there is nothing to tighten the edges onto. */
+    private static boolean hasSound(TimedWord word, double[] energy, double threshold) {
+        int first = (int) Math.max(0, word.startMs() / FRAME_MS);
+        int last = (int) Math.min((word.endMs() - 1) / FRAME_MS, energy.length - 1);
+        for (int frame = first; frame <= last; frame++) {
+            if (energy[frame] >= threshold) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Steps forwards from the start while quiet, never past limit; the new start is the first loud frame minus the lead-in. */

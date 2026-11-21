@@ -41,6 +41,7 @@ public record ApplicationProperties(
                                 boolean dtw,
                                 @NotNull LoopGuard loopGuard,
                                 @NotNull Path vadModel,
+                                @Min(0) int beamSize,
                                 @Min(1) @Max(99) int noisePercentile,
                                 @DecimalMin("1.0") double speechFactor,
                                 @Min(0) int hangoverMs,

@@ -22,7 +22,8 @@ import java.util.regex.Pattern;
 
 /**
  * Runs whisper-cli on one chunk WAV (guide 6.2). The flags are fixed by configuration, never by a request:
- * -l en -t 4 -ojf -pp, then DTW and the repetition-loop guard from checks 1d and 1j. There is no prompt.
+ * -l en -t 4 -ojf -pp, beam search when beam-size is above 0, then DTW and the repetition-loop guard from checks 1d
+ * and 1j. There is no prompt: with -mc 0 whisper ignores one.
  * Progress comes from the "progress = N%" lines -pp writes to standard error.
  */
 @Component
@@ -96,6 +97,10 @@ public class WhisperRunner {
                 "-ojf",
                 "-pp",
                 "-of", outputBase.toString()));
+        if (settings.beamSize() > 0) {
+            // Weighs several candidate transcriptions, so short repeated words ("I I", "so so") are kept more often.
+            command.addAll(List.of("-bs", String.valueOf(settings.beamSize())));
+        }
         if (settings.dtw()) {
             // DTW only takes effect with flash attention off (Step 1).
             command.addAll(List.of("-nfa", "--dtw", modelName()));
