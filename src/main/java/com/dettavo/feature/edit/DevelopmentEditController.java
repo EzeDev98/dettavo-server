@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
-/** Development only (Build Plan 12d): the server's plan for the saved edits, to compare with the browser's by hand. */
 @Profile("dev")
 @RestController
 @RequiredArgsConstructor
