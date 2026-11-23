@@ -21,10 +21,6 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-/**
- * The edit rules of guide 4.9, numbered 1 to 9. editPlan.js and tokens.js in dettavo-client implement the same rules;
- * a rule change is made in both in the same commit. Export always uses this plan.
- */
 @Component
 @RequiredArgsConstructor
 public class EditPlanner {
@@ -35,7 +31,6 @@ public class EditPlanner {
     private record Token(String id, boolean word, long startMs, long endMs) {
     }
 
-    /** A cut while it is being planned; merging tiny keep segments changes it. */
     private static final class PlannedCut {
         private long startMs;
         private long endMs;
