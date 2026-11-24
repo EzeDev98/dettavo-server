@@ -12,10 +12,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Stream;
 
-/**
- * On startup, deletes the *.tmp, *.partial and *.filtergraph files an interrupted save, upload or export left in
- * project folders (guide 4.4).
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor

@@ -1,6 +1,5 @@
 package com.dettavo.common.exception;
 
-/** The client saved against a revision that is no longer the latest. */
 public class RevisionConflictException extends RuntimeException {
 
     private final long currentRevision;

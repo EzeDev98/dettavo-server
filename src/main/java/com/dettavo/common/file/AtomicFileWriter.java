@@ -12,12 +12,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 
-/**
- * Writes a file so a reader never sees it half-written: the content goes to
- * {@code <name>.tmp} in the same folder, is flushed to disk, and then replaces the target
- * in one atomic rename. With {@code keepBackup}, the previous file is first copied to
- * {@code <name>.bak}.
- */
 @Component
 public class AtomicFileWriter {
 

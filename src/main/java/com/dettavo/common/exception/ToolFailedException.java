@@ -3,7 +3,6 @@ package com.dettavo.common.exception;
 import java.nio.file.Path;
 import java.util.List;
 
-/** A native tool exited with an error or ran past its time limit. */
 public class ToolFailedException extends RuntimeException {
 
     private final String tool;

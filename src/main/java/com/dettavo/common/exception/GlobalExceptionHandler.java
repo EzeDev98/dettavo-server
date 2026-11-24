@@ -11,11 +11,6 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
-/**
- * Turns every error into a ProblemDetail (RFC 9457) body with an extra {@code code}.
- * Spring's own errors (unknown path, bad JSON, failed validation, wrong method) keep their
- * status and gain a code here too.
- */
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {

@@ -1,8 +1,5 @@
 package com.dettavo.feature.project.dto;
 
-import com.dettavo.feature.project.model.Clip;
-import com.dettavo.feature.project.model.Project;
-
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;

@@ -1,6 +1,5 @@
 package com.dettavo.common.exception;
 
-/** The {@code code} carried by every error body, so the client can react without parsing text. */
 public enum ErrorCode {
     INVALID_REQUEST,
     HOST_NOT_ALLOWED,

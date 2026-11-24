@@ -1,143 +1,147 @@
-# Decisions
+# Dettavo
 
-Where this file and the technical guide or build plan disagree, this file wins. It records the current decision only; reversed choices are not kept.
+Dettavo is a transcript-based audio and video editor that runs entirely on the owner's Mac. You add recordings, Dettavo transcribes them locally, and you edit by editing the text: delete words, shorten pauses, cut silences, split clips and arrange them on a timeline. The edited result is exported as MP4, MP3 or WAV. Nothing leaves the machine.
 
-## Repositories and running
+This file records the current design decisions only.
+
+## Architecture
 
 | Area | Decision |
 |---|---|
-| Repositories | Two independent repositories: `dettavo-server` (Spring Boot) and `dettavo-client` (Vite and React). Replaces the single `dettavo/` repository with `backend/` and `frontend/` (guide 3, plan 2a). Commands run from the root of the repository they name |
+| Repositories | Two independent repositories: `dettavo-server` (Spring Boot) and `dettavo-client` (Vite and React). Commands run from the root of the repository they name |
 | Independence | The server never builds, serves, starts or refers to the client. They are linked only by configuration: the client's `VITE_API_BASE_URL` and the server's `app.security.allowed-origins` |
-| Server address | `http://localhost:2060` (`server.port=${PORT:2060}`). Replaces 8080 everywhere in the guide and plan |
-| Client address | `http://localhost:2061` for both `npm run dev` and `npm run preview`. Replaces 5173 everywhere. No Vite `/api` proxy |
-| Host name | Always `localhost` in addresses (13 Nov 2026, replacing `127.0.0.1`). The app must be opened at `http://localhost:2061`, the one allowed origin. The server still listens on `127.0.0.1` only (`server.address`) |
-| Pairing | None (13 Nov 2026): no pairing key, no `te_session` cookie, no `/session/pair` and no Pair screen, whatever the guide, the plan (3e, 4e, 20c) and prototype 5f say. The loopback binding, the Host check, the Origin check on writes and CORS protect the service. `/system/status` no longer reports `paired` |
-| Running | Server: `./mvnw spring-boot:run` (development) or `./mvnw package` then `java -Xmx512m -jar target/dettavo.jar`. Client: `npm run dev`, or `npm run build` then `npm run preview`. No launcher scripts: plan 2f and guide 11.2 are dropped |
-| Server build | Spring Boot 4.1.2 (guide said 4.1.1), Java 21, webmvc, validation, Lombok, springdoc 3.1.0; jar name `dettavo.jar`; base package `com.dettavo` |
-| Client build | Ahorra's `package.json` scripts, `.nvmrc` (22), `jsconfig.json` aliases, ESLint and Stylelint configs, without PatternFly. `VITE_API_BASE_URL` in `.env` (git-ignored; `.env.example` committed), read only in `src/core/config/env.js` |
+| Server | Spring Boot 4.1.2, Java 21, webmvc, validation, Lombok, springdoc 3.1.0, virtual threads. Base package `com.dettavo`, organised by feature (`edit`, `export`, `job`, `media`, `project`, `system`, `transcription`), each split into `dto`, `enums`, `service`, `web` and `event` as needed. Jar name `dettavo.jar` |
+| Client | Vite, React and TanStack Query, Node 22. `VITE_API_BASE_URL` lives in `.env` (git-ignored; `.env.example` committed) and is read only in `src/core/config/env.js` |
+| Addresses | Server `http://localhost:2060` (`server.port=${PORT:2060}`), client `http://localhost:2061` for both `npm run dev` and `npm run preview`. Addresses always use `localhost`. No Vite `/api` proxy |
+| Running | Server: `./mvnw spring-boot:run`, or `./mvnw package` then `java -Xmx512m -jar target/dettavo.jar`. Client: `npm run dev`, or `npm run build` then `npm run preview`. No launcher scripts |
+| API docs | Swagger UI and the OpenAPI document are on only under the `dev` profile, as are the development endpoints |
+
+## Security
+
+| Area | Decision |
+|---|---|
+| Local only | The server listens on `127.0.0.1` only |
+| No pairing | There is no pairing key, session cookie or Pair screen. The loopback binding, the Host check, the Origin check on writes and CORS protect the service |
+| `LocalOnlyFilter` | The Host header must be `127.0.0.1:2060` or `localhost:2060` (blocks DNS rebinding). POST, PUT, PATCH and DELETE must come from an allowed origin. `OPTIONS` preflights pass after the Host check so CORS can answer them. Every response carries `nosniff` and `no-referrer` |
+| Processes | Every child process is started through one runner with an argument list, never a shell string, with an explicit environment, continuous output draining, cancellation, timeouts and a per-job log file |
+| Paths | Every path is resolved inside the workspace; file names from the browser are sanitised before they touch the disk |
 
 ## Cross-origin rules (CORS)
 
-The client calls the server across origins, as Ahorra does. Every later step that touches the network must follow this table.
+The client calls the server across origins. Anything that touches the network follows this table.
 
-| Where | Rule | Step |
-|---|---|---|
-| Server, `config/WebConfig` | `/api/**` allows only `app.security.allowed-origins` (default `http://localhost:2061`), no credentials; methods GET, POST, PUT, PATCH, DELETE, OPTIONS; request headers `Content-Type`, `If-Match`, `X-File-Name`, `Range`; exposed headers `ETag`, `Content-Range`, `Accept-Ranges`, `Content-Length`, `Content-Disposition`, `Location`; preflight cached 1 h. Add a header here whenever a new one is sent or read | 2d (done) |
-| Server, `ApplicationProperties` | `app.security.allowed-origins` moves into `ApplicationProperties` with the other `app.*` values; the guide's "dev profile adds the 5173 origins" is replaced by this one property | 3a |
-| Server, `LocalOnlyFilter` | The Origin check on writes uses the same allowed-origins list. `OPTIONS` preflight requests must pass the filter so CORS can answer them. Host check allows `127.0.0.1:2060` and `localhost:2060` | 3d |
-| Client, `httpClient.js` | No credentials (there is no cookie); the base URL comes only from `env.js` | 4d |
-| Client, `index.html` | Content-Security-Policy meta tag with `connect-src 'self' http://localhost:2060` and `media-src 'self' blob: http://localhost:2060` | 4d |
-| Client, progress | `new EventSource(url)`, without credentials | 7e |
-| Client, upload | `XMLHttpRequest` without credentials; `X-File-Name` triggers a preflight | 8a, 9b |
-| Client, revisions | `If-Match` on save; the revision is read from the exposed `ETag` | 6d, 14f |
-| Client, proxy video | `<video crossOrigin="anonymous">`; seeking depends on the exposed `Content-Range` and `Accept-Ranges` | 8g, 15a |
-| Client, downloads | The file name comes from the exposed `Content-Disposition` | 17g, 18c |
-| Client, PWA | Installs from `http://localhost:2061`; the service worker caches only the client's own files, never `/api` | 4f, 20 |
+| Where | Rule |
+|---|---|
+| Server, `WebConfig` | `/api/**` allows only `app.security.allowed-origins` (default `http://localhost:2061`), no credentials; methods GET, POST, PUT, PATCH, DELETE, OPTIONS; request headers `Content-Type`, `If-Match`, `X-File-Name`, `Range`; exposed headers `ETag`, `Content-Range`, `Accept-Ranges`, `Content-Length`, `Content-Disposition`, `Location`; preflight cached 1 h. A new header that is sent or read is added here |
+| Server, errors | Errors are ProblemDetail bodies with a `code`. Errors raised in a filter carry the CORS headers too, so the client can read the status instead of seeing a network error |
+| Client, `httpClient.js` | No credentials; the base URL comes only from `env.js` |
+| Client, `index.html` | Content-Security-Policy with `connect-src 'self' http://localhost:2060` and `media-src 'self' blob: http://localhost:2060` |
+| Client, progress | `new EventSource(url)`, without credentials |
+| Client, upload | `XMLHttpRequest` without credentials; `X-File-Name` triggers a preflight |
+| Client, revisions | `If-Match` on save; the revision is read from the exposed `ETag` |
+| Client, proxy video | `<video crossOrigin="anonymous">`; seeking depends on the exposed `Content-Range` and `Accept-Ranges` |
+| Client, downloads | The file name comes from the exposed `Content-Disposition` |
+| Client, PWA | Installs from `http://localhost:2061`; the service worker caches only the client's own files, never `/api` |
 
-## Tools on the MacBook (2018 MacBook Pro, Intel, zsh)
+## Workspace and storage
+
+| Area | Decision |
+|---|---|
+| Workspace | `~/Dettavo` (`APP_WORKSPACE_DIR`), with `projects/`, `models/` and `tools/` |
+| Project | `projects/<uuid>/project.json` holds clips, transcripts, edits and the last 20 job summaries. Times in it are kept to the second |
+| Clip folder | `clips/<clipId>/source/<sanitised-name>` is never modified; `cache/` holds everything that can be rebuilt (16 kHz audio, proxy, thumbnail, levels, filmstrip, whisper chunks). Clip ids are `c01`, `c02` and upward and are never reused |
+| Writes | Files are written to `.tmp` or `.partial` and renamed only when complete. Leftover `.tmp`, `.partial` and `.filtergraph` files are deleted on startup |
+| Locking | Each project is loaded, changed and saved under its own lock; nothing is written if a change fails |
+| Disk space | A clip is registered before its upload so the space can be checked first; 2 GB is always kept free (`app.disk.reserve-bytes`). A 413 carries `requiredBytes` and `availableBytes` |
+
+## Tools
 
 | Tool | Decision |
 |---|---|
-| Homebrew | No longer builds bottles for Intel macOS; installing through it compiles from source. Avoid `brew install` and `brew upgrade` for these tools |
-| FFmpeg | 7.1.1, pinned (`brew pin ffmpeg`). Has `h264_videotoolbox`, `libx264`, `libmp3lame`. 7.0 or newer, so the export graph flag is `-/filter_complex` |
-| whisper.cpp | Built from source at `~/Dettavo/tools/whisper.cpp` (1.9.5 line), static `whisper-cli` with `GGML_METAL=OFF`, linked into `/usr/local/bin`. No OpenMP; uses plain threads. CMake installed with `python3 -m pip install --user cmake` |
-| Model | `~/Dettavo/models/ggml-small.en.bin` (465 MB) |
-| Java, Node | Managed by the owner: Java 21 (Temurin 21.0.3), Node 22. Never installed by a script |
-| `scripts/install-tools.sh` | In `dettavo-server`. Keeps an existing FFmpeg 7+ with the three encoders (Homebrew only as a fallback), builds `whisper-cli` from source, downloads the model through a `.partial` file with a size check, reports on Java and Node. Starts nothing |
+| FFmpeg | 7.0 or newer with `h264_videotoolbox`, `libx264` and `libmp3lame`. On FFmpeg 7 the export graph is read with `-/filter_complex`, otherwise `-filter_complex_script` |
+| whisper.cpp | `whisper-cli` 1.9.5 built from source in `~/Dettavo/tools/whisper.cpp`, linked into `/usr/local/bin` |
+| Model | `~/Dettavo/models/ggml-small.en.bin`. `medium.en` is rejected: about three times slower and above the memory limit, with no real gain in accuracy |
+| Homebrew | Avoided on Intel Macs, where it compiles from source. An existing FFmpeg 7+ is kept; Homebrew is only a fallback |
+| Java, Node | Java 21 and Node 22 are managed by the owner and never installed by a script |
+| `scripts/install-tools.sh` | Installs FFmpeg if needed, builds `whisper-cli`, downloads the model through a `.partial` file with a size check and reports on Java and Node. Safe to run again. Starts nothing |
+| Detection | The server finds the tools at startup and on request. A missing tool never stops the server; `/system/status` lists it with the command that fixes it |
 
-## Transcription settings from Step 1
-
-| Setting | Value | Evidence |
-|---|---|---|
-| Model | `ggml-small.en.bin` | 10 min of Ahorra Episode 3 audio transcribed in 158.8 s (3.8x realtime); clear text, only names and jargon wrong. On 12 Nov it was compared with `ggml-medium.en.bin` on a 15:25 recording (`~/Dettavo/spikes/test-1.wav`): small.en with a prompt took 272.1 s at 1,165 MB; medium.en took 807.8 s at 2,473 MB, above the 1.2 GB limit, and still heard "Ahorra" as "Ahura". medium.en is rejected and its model file deleted |
-| Threads | 4 (`app.transcription.threads`) | 6 threads: 147.8 s but 821 s CPU against 649 s, 7% faster for 27% more CPU |
-| Memory limit | 1.2 GB (guide said 1 GB) | Peaks: 1,133 MB (flash attention on), 1,230 MB (flash attention off), 1,282 MB (`--dtw`) |
-| Default flags until Step 10b | `-l en -t 4 -ojf -pp`, flash attention on (whisper's default), no `--dtw` | Lightest option; see the postponed checks below |
-| Prompt (check 1e, decided 13 Nov) | None. Whisper runs without `--prompt`; there is no "Words to expect" field and no `app.transcription.prompt`. A better model is the way to improve accuracy later | A per-project word list made the app more complicated than it is worth. Deleting a misheard word still cuts the right audio, because cuts use word times, not spelling |
-| DTW constraint | `--dtw small.en` only works with `-nfa` (flash attention off); whisper silently disables it otherwise ("dtw_token_timestamps is not supported with flash_attn - disabling") | Seen in the Step 1 log. With `-nfa --dtw`: 176.7 s, 1,282 MB |
-| Repetition loops | A loop guard is required (see 10b below) | On a noisy recording whisper repeated one phrase ("maybe it's not working") from about 2:30 to 10:00 with made-up timings |
-| Known misheard words | Ahorra → "Ahura"; onboarding → "your body"; splash → "splice"/"supply"; Google Play → "go-go play"; handoff → "and off"; Vite → "Fighter"/"VITA"; Red Hat Text → "Red Hat test"; helper → "epimeter"; placeholders → "place orders"; theme → "time" | Ahorra Episode 3, first 10 minutes |
-
-## Postponed Step 1 checks
-
-These were postponed on 11 Nov 2026 because they tune configuration, not code structure. The step named in the first column must run its check before it is marked done. Spike files are in `~/Dettavo/spikes/`: `spike-10min.wav` (Ahorra Episode 3 audio), `spike-t4.json` (flash attention on), `spike-dtw.json` (`-nfa --dtw`), and `labels.py`, which turns whisper JSON into Audacity label files (`python3 ~/Dettavo/spikes/labels.py <json> plain|dtw <output-base>`).
-
-| Run in | Check (plan ref) | How | Pass | Decides | Until then |
-|---|---|---|---|---|---|
-| 10b, before WhisperRunner's flags are final | Word edges and pauses (1d) | Make labels from `spike-t4.json` (plain) and `spike-dtw.json` (dtw); open `spike-10min.wav` in Audacity, import the word and pause labels, and check 20 word edges and 10 pauses | 18 of 20 edges within 100 ms; every pause of 0.5 s or more shows as at least 0.3 s | Whether to use `-nfa --dtw small.en`. If DTW does not clearly win, keep flash attention on and no DTW, saving about 150 MB | Flash attention on, no DTW |
-| 10b | Repetition-loop guard (new) | Re-run the noisy recording (`video-1.mov`, which looped) once with `-mc 0` and once with `--vad -vm <silero model>`; re-run Ahorra audio with the winner | The loop is gone and the Ahorra transcript is no worse | Which guard WhisperRunner always passes. 10c should also drop a phrase repeated 3 or more times in a row as a last defence | Not guarded |
-| 10e | Pause thresholds | Use the 1d pause checks to tune `app.transcription.*` (percentile, factor, hangover, limits) | Pauses checked in 1d come out at least as long as they really are | PauseRefiner defaults | Guide 6.4 defaults |
-| 8e | Proxy and seeking (1h) | Build a 720p VideoToolbox proxy of 10 minutes of a real Ahorra screen recording; in Chrome, jump `currentTime` by 0.5 s every 3 s | Encode under 2.5 min; every jump lands with no visible stall over about 100 ms | Proxy encoder settings | Guide 5.5 command |
-| Before 17 | Export sync with a hand-written graph (1f) | Hand-write `spike.filtergraph` with 8 keep segments and 10 ms fades over 10 minutes of a real Ahorra screen recording; export MP4 with VideoToolbox; `ffprobe` the result | Lips in sync to the end within one frame; no click at 10 joins; length matches the plan within 100 ms | Filter graph pattern (17b) | Guide 7.2 pattern |
-| Before 17 | 200-segment export (1g) | Generate a 200-segment graph (keep 2.5 s, cut 0.5 s) and export again under `/usr/bin/time -l` | Peak under 1.5 GB and faster than realtime | If it fails, the per-segment fallback becomes the main export path (17f) | One-graph export |
-
-Inputs still needed: a real Ahorra **screen recording** of at least 10 minutes with speech throughout, for 8e and the two export checks. Screen recordings are variable frame rate (seen: `r_frame_rate` 60, `avg_frame_rate` 59.96), so the export graph must add `fps=<avg_frame_rate>` before the trims (guide 7.2), and macOS recording names contain a hidden narrow space before "pm" (rename the file or use a wildcard).
-
-## Prototype approvals (Build Plan Step 5)
-
-`Dettavo.html` is the approved prototype for every screen. All of Step 5 was approved on 12 Nov 2026.
-
-| Step | Screen | Decision |
-|---|---|---|
-| 5a | Home | One "Add video or audio for editing" button that also takes a file dropped anywhere, then the Projects grid. Rename in place: Enter or clicking away saves, Escape cancels, no Save button. Delete asks in a modal |
-| 5b | Editor layout | Projects back button; Clips tray under the transcript with a dashed plus tile; a plus button in the toolbar; a file dropped anywhere in the editor lands in the tray; the timeline replaces the waveform; one joined transcript with each clip's name where it starts |
-| 5c | Clip dragging | Drag a ready tile onto the timeline, drag clips along it to reorder, drag one back to the tray to take it off. An accent line shows where a clip will land. The transcript follows the timeline order. Each move is one undoable edit. Cuts are stored by word id, so they survive moving a clip or taking it off. Pause tokens and cuts never span two clips |
-| 5d | Clip tile states | Uploading, Preparing and Transcribing with a percentage and a progress bar; "Waiting (n ahead)", because preparing and transcribing share one queue, one clip at a time; Failed with Retry; Upload stopped with Try again; "No speech found", which can still go on the timeline; "Not on timeline". The trash icon (on hover or focus) uses the projects' Delete modal; deleting a clip takes it out of the tray, the queue and the timeline and cannot be undone |
-| 5e | Editor before a clip is ready | Files added from Home make a new project; files added in the editor join the open one. Nothing goes on the timeline until a ready clip is dragged there. Until then the transcript pane shows "Getting your clip ready" with a row per clip (state, percentage, progress bar), the video pane says "Nothing to play yet", the transport and Export are off, the ruler is hidden and the timeline shows a drag hint |
-| 5f | Install flow | Onboarding, Install, hand-off, Setup and Service down (no Pair: see Pairing), on Ahorra's screen pattern. Full-width buttons are 42 px, Ahorra's block-button height. The install dialog is Chrome's own, drawn by the browser: on the Mac it is centred under the toolbar ("Install app", Learn More, Cancel, Next) |
-
-## Transcription (Build Plan Step 10)
+## Media pipeline
 
 | Area | Decision |
 |---|---|
-| Prompt | None (decision 1e): no `wordsToExpect` in project.json and no `app.transcription.prompt`, whatever plan 10g and guide 6.2 say. WhisperRunner never passes `--prompt` |
-| Checks 1d and 1j | Settings, not code: `app.transcription.dtw` (adds `-nfa --dtw <model>`) and `app.transcription.loop-guard` (`none`, `max-context-zero` for `-mc 0`, or `vad` with `app.transcription.vad-model`). Defaults: no DTW, no guard, until the checks are done. `video-1.mov` and the old `labels.py` no longer exist: 1j runs on `test-1.wav` against `test-1-small-prompt.txt`, and `labels.py` was rewritten on 12 Nov |
-| Repetition filter (10c) | A phrase of 2 to 12 words repeated 3 or more times in a row keeps its first copy. Single words are never dropped ("no, no, no" is real speech) |
-| Non-speech (10c) | Bracketed spans such as `[BLANK_AUDIO]`, `(laughs)` and `*music*` are dropped, even when split across tokens, and so are words with no letter or digit |
-| Chunk files | Each finished chunk's JSON stays in `cache/whisper/` for resuming; chunk WAVs are deleted once whisper has read them. Rebuilding the cache deletes both; the transcript is in project.json |
-| Cancel and restart | A cancelled transcription returns the clip to PREPARED; a failed one leaves it FAILED, with Retry (`POST .../transcribe`). On startup, clips left TRANSCRIBING, or PREPARED with no transcript, are queued again and resume from their finished chunks, unless their last transcription was cancelled |
-| ETA | Measured from the first chunk actually transcribed in this run, so reused chunks do not make it too low |
-| Pause refinement | Guide 6.4 defaults as `app.transcription.*`: 20th percentile, x3, 20 ms hangover and lead-in, 300 ms limit. A floor of about -60 dBFS stops digital silence from making every frame loud |
+| Upload | The raw request body is streamed to `source/<name>.partial` through a 1 MB buffer, counted against `Content-Length`, renamed and probed. Multipart is off. The name arrives in `X-File-Name`, URI-encoded. A stopped upload deletes the `.partial` file and the clip shows "Upload stopped" with Try again |
+| Probe | ffprobe; the first audio stream is required. The first video stream gives codec, size, frame rate and rotation; cover art does not count as video. A refused file keeps its reason for its tile |
+| Prepare | One job: 16 kHz mono PCM audio, a thumbnail for video and a playback proxy, with weighted progress. It always starts from an empty `cache/`, so it also serves Rebuild; the transcript is kept |
+| Thumbnail | One frame 320 px wide, at 10 % of the clip and never later than 5 s in |
+| Proxy | `cache/proxy.mp4`, at most 720 px tall, H.264 with a keyframe every 30 frames and AAC audio (VideoToolbox when available, otherwise libx264); `cache/proxy.m4a` for audio clips. Timestamps are kept so proxy time equals source time. Export never uses it |
+| Timeline media | `cache/levels.bin`: 100 RMS levels a second, made on first request. `cache/filmstrip.jpg`: keyframes of the proxy tiled into one image, made in the background |
 
-## Transcription (Build Plan Step 10)
+## Jobs
 
 | Area | Decision |
 |---|---|
-| Prompt | None (decision 1e): no `wordsToExpect` in project.json and no `app.transcription.prompt`, whatever plan 10g and guide 6.2 say. WhisperRunner never passes `--prompt` |
-| Checks 1d and 1j | Settings, not code: `app.transcription.dtw` (adds `-nfa --dtw <model>`) and `app.transcription.loop-guard` (`none`, `max-context-zero` for `-mc 0`, or `vad` with `app.transcription.vad-model`). Defaults: no DTW, no guard, until the checks are done. `video-1.mov` and the old `labels.py` no longer exist: 1j runs on `test-1.wav` against `test-1-small-prompt.txt`, and `labels.py` was rewritten on 12 Nov |
-| Repetition filter (10c) | A phrase of 2 to 12 words repeated 3 or more times in a row keeps its first copy. Single words are never dropped ("no, no, no" is real speech) |
-| Non-speech (10c) | Bracketed spans such as `[BLANK_AUDIO]`, `(laughs)` and `*music*` are dropped, even when split across tokens, and so are words with no letter or digit |
-| Chunk files | Each finished chunk's JSON stays in `cache/whisper/` for resuming; chunk WAVs are deleted once whisper has read them. Rebuilding the cache deletes both; the transcript is in project.json |
-| Cancel and restart | A cancelled transcription returns the clip to PREPARED; a failed one leaves it FAILED, with Retry (`POST .../transcribe`). On startup, clips left TRANSCRIBING, or PREPARED with no transcript, are queued again and resume from their finished chunks, unless their last transcription was cancelled |
-| ETA | Measured from the first chunk actually transcribed in this run, so reused chunks do not make it too low |
-| Pause refinement | Guide 6.4 defaults as `app.transcription.*`: 20th percentile, x3, 20 ms hangover and lead-in, 300 ms limit. A floor of about -60 dBFS stops digital silence from making every frame loud |
+| Queue | Heavy jobs (prepare, transcribe, export) run one at a time in the order queued. One job per clip and one export per project at a time; otherwise 409 |
+| States | QUEUED → RUNNING → SUCCEEDED, FAILED or CANCELLED; QUEUED → CANCELLED |
+| Memory and disk | Jobs live in memory; each one's start and end are also written to `project.json`. A job left RUNNING when the server stopped is recorded as FAILED, "Interrupted by restart" |
+| Restart | An interrupted upload starts again and an interrupted preparation fails. Clips left transcribing, or prepared with no transcript, are queued again and resume from their finished chunks, unless their last transcription was cancelled |
+| Events | Server-sent events per job and per project. A stream starts with the full current state, so a reconnect needs no replay. Progress is sent on a 250 ms tick, status and queue changes at once, with a heartbeat every 15 s |
+| ETA | Measured only from work done in the current run, so reused work does not make it too low |
 
-## Export (Build Plan Step 17)
+## Transcription
 
 | Area | Decision |
 |---|---|
-| Graph and memory | Built on the guide 7.2 one-graph pattern. Checks 1f and 1g have not been run yet; 17 is not done until they pass on a real screen recording. 17f (per-segment fallback) is built only if 1g fails |
-| Audio rate | Every export's audio is 48 kHz stereo (7.1 rule 2), so WAV is 48 kHz too, not the source rate 7.3 mentions |
-| Frame snapping | Video exports snap keep segments to the first video clip's average frame rate; MP3 and WAV keep the planner's milliseconds |
-| MP4 without video | 400 "An MP4 export needs a video clip on the timeline"; the dialog hides MP4 in that case (18a) |
-| Finished file name | The job does not carry the file name; the dialog reads the newest entry of GET /exports after the job succeeds |
-| Development endpoints | GET /projects/{id}/export-plan (and /filtergraph) and POST /dev/projects/{id}/export-broken, dev profile only |
+| Engine | whisper.cpp `small.en`, English, 4 threads (`app.transcription.threads`), JSON output. Peak memory stays under 1.2 GB |
+| Chunks | 10-minute chunks with a 2-second overlap. Each finished chunk's JSON stays in `cache/whisper/` for resuming; chunk WAVs are deleted once read |
+| Prompt | None. A per-project word list is not worth the complexity: deleting a misheard word still cuts the right audio, because cuts use word times, not spelling |
+| Decoding | Beam search width 5, which keeps more repeated words at some cost in speed |
+| Repetition loops | Guarded by `app.transcription.loop-guard`: `max-context-zero` (`-mc 0`, the default), `vad` (with `app.transcription.vad-model`) or `none`. A phrase of 2 to 12 words repeated three or more times in a row also keeps only its first copy. Single words are never dropped ("no, no, no" is real speech) |
+| DTW | Off by default (`app.transcription.dtw`). It only works with flash attention off, so turning it on adds `-nfa --dtw <model>` |
+| Non-speech | Bracketed spans such as `[BLANK_AUDIO]`, `(laughs)` and `*music*` are dropped, even when split across tokens, and so are words with no letter or digit |
+| Words | Ids `w00001` upward per clip, given after the chunks are stitched; times in milliseconds on the clip's source; a word lasts at least 20 ms |
+| Pause refinement | Word edges are tightened onto speech using 10 ms energy frames: noise floor at the 20th percentile, speech at 3× the floor, 20 ms hangover and lead-in, with a floor of about -60 dBFS so digital silence is never loud |
+| Paragraphs | A paragraph ends after a sentence followed by 1.5 s of silence, or at 120 words |
+| Cancel and retry | A cancelled transcription returns the clip to PREPARED; a failed one leaves it FAILED with Retry |
 
-## Install flow (Build Plan Step 20)
-
-| Area | Decision |
-|---|---|
-| App icon | The owner's Dettavo logo (the D with the orange cut, 13 Nov 2026), kept exactly as supplied in dettavo-client `assets/icon-source.png`. `npm run icons` (sharp, from Ahorra's script) only scales it: the maskable and Apple icons place it on #1e1e1e, the others keep its transparent surround |
-| Routes | Onboarding `/welcome` and Install `/install`, in a browser tab only. Every other route needs the installed app (InstallGuard) and sends a tab to `/welcome` |
-| First-run order | Service down, then Setup while a tool is missing, then Home (plan 20c without Pair) |
-| Install steps | Chrome on the Mac only, as in the prototype. Ahorra's other platforms are left out. The steps show when Chrome cancels its dialog or offers none within 10 seconds |
-| Service down | No "Try again" button (prototype 5f): the status query asks every 3 seconds |
-| Development | `VITE_SKIP_INSTALL_GUARD=true` in `.env` lets `npm run dev` run the whole app in a tab. A build ignores it |
-| Updates | Ahorra's UpdatePrompt, already in place and unchanged: a new build is offered within 3 minutes, or when the app comes back to the front |
-EOFcat >> docs/decisions.md <<'EOF'
-
-## Colour
+## Editing
 
 | Area | Decision |
 |---|---|
-| Accent (13 Nov 2026) | Electric lavender `#c4a1ff` replaces the prototype's blue everywhere: primary buttons, focus, selection, the current word, progress and the timeline's clip blocks. The app icon is the owner's logo, not recoloured. Primary buttons carry dark text (`#1e1e1e`), since white on lavender is too faint. Everything else in the prototype stays as drawn |
+| Edit state | One document saved whole: timeline order, removed tokens, pause trims, padding, range cuts and splits. Each save bumps a revision sent as the `ETag`; saves send `If-Match`, and a stale one gets 409. Edits autosave and are undoable |
+| Tokens | A clip is a lead-in pause, then each word and the pause after it. Cuts are stored by token id, so they survive moving a clip or taking it off the timeline. Tokens and cuts never span two clips |
+| Planning | The server's EditPlanner is the single source of truth for what is kept; the client mirrors it for playback. Consecutive removed tokens merge into one cut, and a pause between two removed tokens goes with them |
+| Padding | Default 30 ms, 0 to 200 ms. At a cut's edge the padding moves into the cut next to a kept word, or out into the kept pause next to a removed word, never past that pause's middle |
+| Pauses | A trimmed pause keeps the chosen length, centred, and its cut never merges with others. Max pause replaces every SILENCE range cut with the silences found in the audio, as one undoable edit |
+| Range cuts | MANUAL (a piece deleted on the timeline) or SILENCE. They take out exactly their range, with no padding, and the words inside go with them |
+| Splits | Split at the playhead; Delete left and Delete right remove from the playhead to the split before or after it. A split too close to an edge or another split is ignored |
+| Tiny pieces | A keep segment shorter than 20 ms is absorbed into the cut next to it |
+| Timeline | Ready clips are dragged from the Clips tray onto the timeline, reordered along it and dragged back to take them off; each move is one undoable edit. The transcript follows timeline order. With Skip cuts on, the timeline shows edited time |
+
+## Export
+
+| Area | Decision |
+|---|---|
+| Plan | Built on the server from the saved edits, never from the browser's numbers |
+| Audio | Every export's audio is 48 kHz stereo, with 10 ms fades at each join but not at the export's own start and end |
+| Video | The output size and frame rate come from the first video clip on the timeline, rounded down to even dimensions. Keep segments are snapped to that frame rate so audio and video stay in sync across hundreds of joins; variable frame rate is fixed before trimming. Other clips are fitted inside the frame with black bars, never cropped. An audio clip in an MP4 gets black video. MP3 and WAV keep the planner's milliseconds |
+| Graph | One FFmpeg run with the filter graph in a file (`export-<jobId>.filtergraph`), since hundreds of segments would overflow a command line. The graph file is deleted whatever the outcome. Numbers use a dot and three decimals whatever the locale |
+| Encoders | MP4: VideoToolbox at 8 Mb/s (Standard) or 16 Mb/s (High) for 1080p, scaled by pixel count, libx264 when VideoToolbox is missing, AAC audio. MP3: LAME. WAV: 16-bit or 24-bit PCM |
+| Final check | The output is written to a `.partial` file and renamed only after ffprobe confirms every stream and a length within max(100 ms, 0.5 %) of the plan |
+| Rules | 409 while a timeline clip is not ready; 400 when nothing is left to export; 400 for an MP4 with no video clip on the timeline (the dialog hides MP4 then) |
+| Files | `projects/<id>/exports/<name>-edited-<yyyyMMdd-HHmmss>.<ext>`, so an export never overwrites an earlier one. The dialog reads the newest entry of `GET /exports` once the job succeeds. Show in Finder uses `open -R` |
+
+## Client app
+
+| Area | Decision |
+|---|---|
+| Delivery | An installable PWA, installed from Chrome on the Mac only. The install dialog is Chrome's own; manual steps show if Chrome cancels it or offers none within 10 seconds |
+| Routes | Onboarding `/` (the manifest's start URL) and Install `/install` work in a browser tab. Every other route needs the installed app and sends a tab back to Onboarding. `VITE_SKIP_INSTALL_GUARD=true` lets `npm run dev` run the whole app in a tab; a build ignores it |
+| First run | Service down, then Setup while a tool is missing, then Home. Service down has no Try again button: the status is polled every 3 seconds |
+| Updates | A new build is offered within 3 minutes, or when the app comes back to the front. Updating resets the client's own files only; projects live on the server |
+| Data | TanStack Query in memory only. Spinners use `isPending`, never `isFetching`. Only server errors are retried, twice. Every path, route and query key is defined once |
+| Home | One "Add video or audio for editing" button that also takes a file dropped anywhere, then the Projects grid. Rename in place: Enter or clicking away saves, Escape cancels. Delete asks in a modal |
+| Editor | Video pane, transcript with a Cuts tab, Clips tray and timeline with waveform, filmstrip, ruler and playhead. Files dropped in the editor join the open project; files added from Home make a new one. Nothing goes on the timeline until a ready clip is dragged there |
+| Clip tiles | Uploading, Preparing and Transcribing with a percentage; "Waiting (n ahead)"; Failed with Retry; Upload stopped with Try again; "No speech found"; "Not on timeline". Deleting a clip removes it from the tray, the queue and the timeline and cannot be undone |
+| Look | Dark only. Every colour, size and duration is a design token in `tokens.css` (palette, semantic, component); Stylelint rejects raw values elsewhere. One font, Red Hat Text 400, self-hosted. The accent is white, with dark text on it. Reduced motion is honoured everywhere |
+| App icon | The owner's Dettavo logo, kept exactly as supplied in `assets/icon-source.png`. `npm run icons` only scales it; the maskable and Apple icons place it on `#1e1e1e` |

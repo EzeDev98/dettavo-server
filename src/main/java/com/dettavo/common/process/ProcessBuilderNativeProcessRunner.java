@@ -230,7 +230,6 @@ public class ProcessBuilderNativeProcessRunner implements NativeProcessRunner {
             try {
                 writer.close();
             } catch (IOException e) {
-                // Nothing left to do.
             }
         }
     }
